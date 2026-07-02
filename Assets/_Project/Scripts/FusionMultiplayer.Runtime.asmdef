@@ -1,0 +1,19 @@
+{
+  "name": "FusionMultiplayer.Runtime",
+  "rootNamespace": "FusionMultiplayer",
+  "references": [
+    "Fusion.Unity",
+    "GUID:850f5b8096bb4c64abfef35065cde6b1",
+    "Unity.InputSystem",
+    "Unity.TextMeshPro"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -1,0 +1,26 @@
+================================================================================
+  PHOTON FUSION 2 IS REQUIRED BEFORE THIS PROJECT WILL COMPILE
+================================================================================
+
+If you see hundreds of errors like:
+  CS0246: The type or namespace name 'Fusion' could not be found
+
+Fix:
+1) Download "Fusion SDK 2.x Stable" from Photon (SDK & Download docs).
+2) In Unity: Assets > Import Package > Custom Package … select the .unitypackage
+3) Paste your Fusion 2 App Id in Fusion Hub (Welcome tab).
+
+After import you should have assemblies including Fusion.Runtime and Fusion.Unity
+(under Assets/Photon/Fusion) and the Fusion-related compile errors will disappear.
+
+If you use Assembly Definitions: add assembly name
+  FusionMultiplayer.Runtime
+to Fusion > Network Project Config > Assemblies To Weave, then Apply.
+
+After importing Fusion, the project may auto-inject that line via
+Assets/Editor/FusionNetworkConfigWeaverPatcher.cs — still open Network Project Config and click Apply if prompted.
+
+See also: Assets/_Project/Docs/SETUP.md
+See step-by-step: Assets/_Project/Docs/FUSION_IMPORT_CHECKLIST.md
+
+================================================================================
