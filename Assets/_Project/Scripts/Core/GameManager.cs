@@ -7,11 +7,20 @@ using UnityEngine;
 namespace FusionMultiplayer.Core
 {
     /// <summary>
-    /// Scene authority for character ownership, game over state, and spawn points.
+    /// Scene authority for character ownership, match timer, game over, and spawn points.
     /// State authority follows Shared Mode master client on this scene object.
     /// </summary>
     public class GameManager : NetworkBehaviour, INetworkRunnerCallbacks, IAfterHostMigration
     {
+        public const float MatchDurationSeconds = 300f;
+        public const float VoteDurationSeconds = 30f;
+
+        public const int VoteRestart = 0;
+        public const int VoteArena = 1;
+        public const int VotePlaza = 2;
+        public const int VoteRuins = 3;
+        public const int VoteOptionCount = 4;
+
         public static GameManager Instance { get; private set; }
 
         [SerializeField] private NetworkObject _playerAvatarPrefab;
@@ -23,6 +32,10 @@ namespace FusionMultiplayer.Core
 
         [Networked, OnChangedRender(nameof(OnGameOverChanged))]
         public bool IsGameOver { get; set; }
+
+        [Networked] private TickTimer MatchTimer { get; set; }
+        [Networked] private TickTimer VoteTimer { get; set; }
+        [Networked] private NetworkBool VoteResolved { get; set; }
 
         private readonly PlayerRef[] _lastOwners = new PlayerRef[10];
         private bool _ownersSnapshotReady;
@@ -56,6 +69,60 @@ namespace FusionMultiplayer.Core
             return IsGameOver;
         }
 
+        public bool TryGetMatchRemaining(out float seconds)
+        {
+            seconds = 0f;
+            if (!IsNetworkActive || IsGameOver)
+                return false;
+
+            if (!MatchTimer.IsRunning)
+            {
+                seconds = MatchDurationSeconds;
+                return true;
+            }
+
+            var remaining = MatchTimer.RemainingTime(Runner);
+            if (!remaining.HasValue)
+                return false;
+
+            seconds = Mathf.Max(0f, remaining.Value);
+            return true;
+        }
+
+        public bool TryGetVoteRemaining(out float seconds)
+        {
+            seconds = 0f;
+            if (!IsNetworkActive || !IsGameOver || VoteResolved)
+                return false;
+
+            if (!VoteTimer.IsRunning)
+            {
+                seconds = VoteDurationSeconds;
+                return true;
+            }
+
+            var remaining = VoteTimer.RemainingTime(Runner);
+            if (!remaining.HasValue)
+                return false;
+
+            seconds = Mathf.Max(0f, remaining.Value);
+            return true;
+        }
+
+        public static bool IsValidVoteOption(int option) =>
+            option >= VoteRestart && option < VoteOptionCount;
+
+        public static SessionCatalog.MapKind ResolveMapFromVote(int option, SessionCatalog.MapKind current)
+        {
+            return option switch
+            {
+                VoteArena => SessionCatalog.MapKind.Arena,
+                VotePlaza => SessionCatalog.MapKind.Plaza,
+                VoteRuins => SessionCatalog.MapKind.Ruins,
+                _ => current
+            };
+        }
+
         public override void Spawned()
         {
             Instance = this;
@@ -65,6 +132,9 @@ namespace FusionMultiplayer.Core
                 for (var i = 0; i < 10; i++)
                     CharacterOwners.Set(i, PlayerRef.None);
                 IsGameOver = false;
+                VoteResolved = false;
+                MatchTimer = TickTimer.CreateFromSeconds(Runner, MatchDurationSeconds);
+                VoteTimer = default;
             }
 
             _ownersSnapshotReady = false;
@@ -78,11 +148,17 @@ namespace FusionMultiplayer.Core
             if (!HasStateAuthority || Runner == null || !Runner.IsSharedModeMasterClient)
                 return;
 
-            if (Runner.SimulationTime < _nextMigrationSnapshotTime)
-                return;
+            if (!IsGameOver && MatchTimer.Expired(Runner))
+                MasterSetGameOver();
 
-            _nextMigrationSnapshotTime = Runner.SimulationTime + 10f;
-            Runner.PushHostMigrationSnapshot();
+            if (IsGameOver && !VoteResolved)
+                TryResolveVotes();
+
+            if (Runner.SimulationTime >= _nextMigrationSnapshotTime)
+            {
+                _nextMigrationSnapshotTime = Runner.SimulationTime + 10f;
+                Runner.PushHostMigrationSnapshot();
+            }
         }
 
         public void AfterHostMigration()
@@ -198,7 +274,13 @@ namespace FusionMultiplayer.Core
             if (!CanMutateSlots || !HasStateAuthority || !Runner.IsSharedModeMasterClient)
                 return;
 
+            if (IsGameOver)
+                return;
+
             IsGameOver = true;
+            VoteResolved = false;
+            VoteTimer = TickTimer.CreateFromSeconds(Runner, VoteDurationSeconds);
+            ResetAllEndGameVotes();
             RpcBroadcastGameOver();
         }
 
@@ -206,6 +288,150 @@ namespace FusionMultiplayer.Core
         private void RpcBroadcastGameOver()
         {
             GameOverBridge.NotifyStateChanged(true);
+        }
+
+        private void TryResolveVotes()
+        {
+            if (!HasStateAuthority || VoteResolved)
+                return;
+
+            CountPlayersAndVotes(out var connected, out var voted, out var counts, out var totalVotes);
+            var allVoted = connected > 0 && voted >= connected;
+            var timerDone = VoteTimer.ExpiredOrNotRunning(Runner);
+
+            if (!allVoted && !timerDone)
+                return;
+
+            if (totalVotes <= 0)
+            {
+                ApplyVoteResult(GetCurrentMap());
+                return;
+            }
+
+            var winningOption = PickWinningOption(counts, totalVotes);
+            ApplyVoteResult(ResolveMapFromVote(winningOption, GetCurrentMap()));
+        }
+
+        private static void CountPlayersAndVotes(out int connected, out int voted, out int[] counts, out int totalVotes)
+        {
+            connected = 0;
+            voted = 0;
+            totalVotes = 0;
+            counts = new int[VoteOptionCount];
+
+            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            {
+                if (pd.Object == null || !pd.Object.IsValid)
+                    continue;
+
+                connected++;
+                var vote = pd.EndGameVote;
+                if (!IsValidVoteOption(vote))
+                    continue;
+
+                voted++;
+                totalVotes++;
+                counts[vote]++;
+            }
+        }
+
+        private static int PickWinningOption(int[] counts, int totalVotes)
+        {
+            var max = -1;
+            for (var i = 0; i < counts.Length; i++)
+            {
+                if (counts[i] > max)
+                    max = counts[i];
+            }
+
+            var top = new List<int>(VoteOptionCount);
+            for (var i = 0; i < counts.Length; i++)
+            {
+                if (counts[i] == max)
+                    top.Add(i);
+            }
+
+            if (top.Count == 1 && counts[top[0]] * 2 > totalVotes)
+                return top[0];
+
+            return top[Random.Range(0, top.Count)];
+        }
+
+        private SessionCatalog.MapKind GetCurrentMap()
+        {
+            if (Runner != null && Runner.SessionInfo.IsValid &&
+                SessionCatalog.TryGetMap(Runner.SessionInfo, out var map))
+                return map;
+
+            return SceneIndices.GetMapKind(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+        }
+
+        private void ApplyVoteResult(SessionCatalog.MapKind map)
+        {
+            if (!HasStateAuthority || VoteResolved)
+                return;
+
+            VoteResolved = true;
+            ResetMatchScoresAndSlots();
+            IsGameOver = false;
+            GameOverBridge.NotifyStateChanged(false);
+
+            if (Runner != null && Runner.SessionInfo.IsValid)
+            {
+                Runner.SessionInfo.UpdateCustomProperties(new Dictionary<string, SessionProperty>
+                {
+                    { SessionCatalog.PropMap, (int)map }
+                });
+            }
+
+            SessionData.SelectedMap = map;
+            Runner.LoadScene(SceneRef.FromIndex(SessionCatalog.GetSceneBuildIndex(map)));
+        }
+
+        private void ResetMatchScoresAndSlots()
+        {
+            for (var i = 0; i < 10; i++)
+                CharacterOwners.Set(i, PlayerRef.None);
+
+            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            {
+                if (pd.Object == null || !pd.Object.IsValid)
+                    continue;
+
+                if (pd.HasStateAuthority)
+                {
+                    pd.Score = 0;
+                    pd.Deaths = 0;
+                    pd.CharacterIndex = -1;
+                    pd.EndGameVote = PlayerData.NoEndGameVote;
+                }
+                else
+                {
+                    pd.RpcResetMatchStats(pd.Object.InputAuthority);
+                }
+            }
+
+            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            {
+                if (avatar.Object == null || !avatar.Object.IsValid || Runner == null)
+                    continue;
+
+                Runner.Despawn(avatar.Object);
+            }
+        }
+
+        private static void ResetAllEndGameVotes()
+        {
+            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            {
+                if (pd.Object == null || !pd.Object.IsValid)
+                    continue;
+
+                if (pd.HasStateAuthority)
+                    pd.EndGameVote = PlayerData.NoEndGameVote;
+                else
+                    pd.RpcClearEndGameVote(pd.Object.InputAuthority);
+            }
         }
 
         #region INetworkRunnerCallbacks

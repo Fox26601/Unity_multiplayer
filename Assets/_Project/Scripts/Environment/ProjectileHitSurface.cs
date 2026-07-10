@@ -9,12 +9,20 @@ namespace FusionMultiplayer.Environment
         public static bool TryGetBlockingSurface(Collider col, out Component surface)
         {
             surface = null;
-            if (col == null || col.isTrigger)
+            if (col == null || !col.enabled || col.isTrigger)
+                return false;
+
+            // Players and projectiles are handled by Projectile hit logic, not as world blocks.
+            if (col.GetComponentInParent<PlayerAvatar>() != null)
+                return false;
+            if (col.GetComponentInParent<Projectile>() != null)
                 return false;
 
             var env = col.GetComponentInParent<EnvironmentPiece>();
-            if (env != null && env.BlocksProjectiles)
+            if (env != null)
             {
+                if (!env.BlocksProjectiles)
+                    return false;
                 surface = env;
                 return true;
             }
@@ -26,7 +34,16 @@ namespace FusionMultiplayer.Environment
                 return true;
             }
 
-            return false;
+            var ground = col.GetComponentInParent<CheckerboardGround>();
+            if (ground != null)
+            {
+                surface = ground;
+                return true;
+            }
+
+            // Any other solid world collider (floor, walls, props).
+            surface = col;
+            return true;
         }
     }
 }

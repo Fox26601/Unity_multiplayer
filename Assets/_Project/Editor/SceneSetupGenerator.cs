@@ -397,6 +397,8 @@ namespace FusionMultiplayer.EditorTools
             var goUi = goCanvas.gameObject.AddComponent<GameOverUI>();
             goCanvas.gameObject.AddComponent<CombatHealthHud>();
             goCanvas.gameObject.AddComponent<CrosshairHud>();
+            goCanvas.gameObject.AddComponent<LeaderboardUI>();
+            goCanvas.gameObject.AddComponent<MatchTimerHud>();
             var masterBtn = UiSceneLayout.CreateButton(goCanvas.transform, "BtnEndGame", "END GAME", new Vector2(320f, 64f));
             var masterRt = masterBtn.GetComponent<RectTransform>();
             masterRt.anchorMin = new Vector2(0.82f, 0.58f);
@@ -416,22 +418,27 @@ namespace FusionMultiplayer.EditorTools
                 TextAlignmentOptions.Center, FontStyles.Bold);
             goTitle.text = "GAME OVER";
             UiTypography.ApplyTitle(goTitle);
-            UiRegionLayout.StretchBand(goTitle.rectTransform, 0.62f, 0.78f, 48f);
+            UiRegionLayout.StretchBand(goTitle.rectTransform, 0.72f, 0.88f, 48f);
 
             var resultsTitle = UiSceneLayout.CreateText(overlay.transform, "ResultsTitle", UiTypography.Subtitle,
                 TextAlignmentOptions.Center, FontStyles.Bold);
             resultsTitle.text = UiCopy.GameOverResultsTitle;
             UiTypography.ApplySubtitle(resultsTitle);
-            UiRegionLayout.StretchBand(resultsTitle.rectTransform, 0.58f, 0.66f, 80f);
+            UiRegionLayout.StretchBand(resultsTitle.rectTransform, 0.62f, 0.70f, 80f);
 
             var resultsTable = UiSceneLayout.CreateText(overlay.transform, "ResultsTable", UiTypography.Body,
                 TextAlignmentOptions.Top, FontStyles.Normal);
             resultsTable.text = UiCopy.GameOverNoScores;
             UiTypography.ApplyBody(resultsTable, TextAlignmentOptions.Top);
-            UiRegionLayout.StretchBand(resultsTable.rectTransform, 0.28f, 0.56f, 80f);
+            UiRegionLayout.StretchBand(resultsTable.rectTransform, 0.42f, 0.62f, 80f);
 
-            var leaveBtn = UiSceneLayout.CreateButton(overlay.transform, "BtnLeave", "Leave to main menu", new Vector2(360f, 72f));
-            UiRegionLayout.CenterInBand(leaveBtn.GetComponent<RectTransform>(), 0.38f, 0.52f, new Vector2(420f, 0f));
+            var leaveBtn = UiSceneLayout.CreateButton(overlay.transform, "BtnLeave", UiCopy.GameOverLeave, new Vector2(360f, 72f));
+            var leaveRt = leaveBtn.GetComponent<RectTransform>();
+            leaveRt.anchorMin = new Vector2(0.5f, 0f);
+            leaveRt.anchorMax = new Vector2(0.5f, 0f);
+            leaveRt.pivot = new Vector2(0.5f, 0f);
+            leaveRt.anchoredPosition = new Vector2(0f, 28f);
+            leaveRt.sizeDelta = new Vector2(420f, 64f);
             UiTypography.StyleButton(leaveBtn);
 
             var goSo = new SerializedObject(goUi);

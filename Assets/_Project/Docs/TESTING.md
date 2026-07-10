@@ -151,8 +151,12 @@ Requires **Combat** or **Sandbox** game mode from main menu. Two MPPM clients re
 | Placed blocks | Sandbox/Build: shoot player-placed cube → projectile stops |
 | Tab scoreboard | **Hold Tab** → centered overlay **SCOREBOARD** with **PLAYER / KILLS / DEATHS** |
 | Tab release | Release Tab → overlay hides; cursor stays locked |
-| Tab + chat | Tab scoreboard hidden while chat compose is open |
-| End game | Master **End Game** → results table shows same **KILLS / DEATHS** columns |
+| Match timer | Top-center countdown starts at **5:00** after spawn; ticks down for all clients |
+| Timer end | At **0:00** → GAME OVER overlay + results for everyone (same as End Game) |
+| End game | Master **End Game** early → same results + vote UI |
+| Map vote | Vote **Restart** / **Arena** / **Plaza** / **Ruins**; majority of cast votes wins; tie → random among top |
+| Vote resolve | All voted or **30 s** → winning map reloads; scores reset; timer restarts |
+| Leave | **Leave to main menu** exits session for that client only |
 
 ---
 

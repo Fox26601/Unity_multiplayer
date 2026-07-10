@@ -9,10 +9,12 @@ namespace FusionMultiplayer.Player
     [RequireComponent(typeof(SphereCollider))]
     public sealed class Projectile : NetworkBehaviour
     {
-        private const float Speed = 22f;
-        private const float LifetimeSeconds = 3f;
+        private const float Speed = 45f;
+        private const float LifetimeSeconds = 5f;
         private const float MaxHitDistance = 40f;
         private const float Damage = 25f;
+
+        private static readonly RaycastHit[] SweepHits = new RaycastHit[16];
 
         [Networked] public PlayerRef Shooter { get; private set; }
 
@@ -64,10 +66,12 @@ namespace FusionMultiplayer.Player
             if (TrySweepHit(transform.position, step, out var sweepCollider))
             {
                 TryResolveCollision(sweepCollider);
-                return;
+                if (_resolved)
+                    return;
             }
 
             transform.position += step;
+            Physics.SyncTransforms();
         }
 
         private void OnTriggerEnter(Collider other)
@@ -85,14 +89,38 @@ namespace FusionMultiplayer.Player
                 return false;
 
             var radius = _collider != null ? _collider.radius * GetMaxAxis(transform.lossyScale) : 0.18f;
-            if (Physics.SphereCast(origin, radius, step.normalized, out var hit, step.magnitude,
-                    Physics.AllLayers, QueryTriggerInteraction.Collide))
+            var count = Physics.SphereCastNonAlloc(origin, radius, step.normalized, SweepHits, step.magnitude,
+                Physics.AllLayers, QueryTriggerInteraction.Collide);
+
+            var nearest = float.MaxValue;
+            for (var i = 0; i < count; i++)
             {
-                hitCollider = hit.collider;
-                return true;
+                var col = SweepHits[i].collider;
+                if (col == null || col == _collider || !IsRelevantSweepTarget(col))
+                    continue;
+
+                if (SweepHits[i].distance < nearest)
+                {
+                    nearest = SweepHits[i].distance;
+                    hitCollider = col;
+                }
             }
 
-            return false;
+            return hitCollider != null;
+        }
+
+        /// <summary>Sweep must skip the shooter's own colliders and other projectiles.</summary>
+        private bool IsRelevantSweepTarget(Collider col)
+        {
+            if (col.GetComponentInParent<Projectile>() != null)
+                return false;
+
+            var avatar = col.GetComponentInParent<PlayerAvatar>();
+            if (avatar != null && avatar.Object != null && avatar.Object.IsValid &&
+                avatar.Object.InputAuthority == _shooterRef)
+                return false;
+
+            return true;
         }
 
         private static float GetMaxAxis(Vector3 scale)
@@ -130,6 +158,10 @@ namespace FusionMultiplayer.Player
                 DespawnResolved();
                 return;
             }
+
+            // Solid non-player collider that wasn't tagged — still stop the shot.
+            if (!other.isTrigger && other.GetComponentInParent<PlayerAvatar>() == null)
+                DespawnResolved();
         }
 
         private void RegisterHit(PlayerAvatar victim, PlayerRef victimRef)

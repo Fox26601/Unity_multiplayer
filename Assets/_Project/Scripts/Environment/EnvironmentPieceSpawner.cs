@@ -46,6 +46,9 @@ namespace FusionMultiplayer.Environment
 
             var checker = go.GetComponent<CheckerboardGround>() ?? go.AddComponent<CheckerboardGround>();
             checker.SetPalette(colorA, colorB);
+            if (go.GetComponent<EnvironmentPiece>() == null)
+                go.AddComponent<EnvironmentPiece>();
+            go.isStatic = true;
             return go;
         }
 

@@ -55,7 +55,7 @@
 | 14 | `OnChangedRender` on networked value | `PlayerAvatar.HitCount`, `GameManager.IsGameOver` | Done |
 | 15 | RPC validation (distance, source) | `PlayerAvatar.RpcRegisterHit`, `Projectile.ValidateHit` | Done |
 | 16 | Session locked after game start | `SessionLock` (`IsOpen=false`, `phase=Started`) | Done |
-| 17 | Hidden score; master sends results at end; master-migration-safe | `PlayerData.Score`, `RpcBroadcastGameOver`, `GameOverUI`, host migration | Done |
+| 17 | Hidden score; master/timer ends match; results + map vote | `PlayerData.Score`, `MatchTimer`, `RpcBroadcastGameOver`, `GameOverUI` vote | Done |
 | 18 | Game rules support master client migration | `GameManager` snapshots, `IAfterHostMigration`, `ConnectionManager.OnHostMigration` | Done |
 | B1 | Game Mode changes gameplay (Build / Combat / Sandbox) | `SessionRuntime` gates | Done |
 | B2 | Networked Animator (≥3 states) | Optional bonus | Not started |
@@ -71,7 +71,7 @@
 
 1. MPPM: 3 virtual players — session browser, mode/map filters, hidden session
 2. After master **START GAME**, 4th client **cannot** join (rejected or session shows **STARTED**)
-3. **Combat** / **Sandbox**: LMB fires projectile; hit updates score (not shown live); master **End Game** shows results table
+3. **Combat** / **Sandbox**: LMB fires projectile; Tab shows live score; **5:00** match timer; on expiry (or master **End Game**) results + map vote; leave to main menu
 4. Host blocks cannot be broken by other players (`BuilderTool` rule from Assignment 1)
 
 ## Architecture (OOP / patterns)

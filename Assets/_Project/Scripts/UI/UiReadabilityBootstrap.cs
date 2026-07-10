@@ -39,6 +39,10 @@ namespace FusionMultiplayer.UI
                 gameObject.AddComponent<CombatHealthHud>();
             if (GetComponent<CrosshairHud>() == null)
                 gameObject.AddComponent<CrosshairHud>();
+            if (GetComponent<LeaderboardUI>() == null)
+                gameObject.AddComponent<LeaderboardUI>();
+            if (GetComponent<MatchTimerHud>() == null)
+                gameObject.AddComponent<MatchTimerHud>();
         }
     }
 }

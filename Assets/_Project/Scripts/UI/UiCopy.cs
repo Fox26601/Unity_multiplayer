@@ -108,6 +108,12 @@ namespace FusionMultiplayer.UI
         public const string GameOverResultsTitle = "RESULTS";
         public const string GameOverResultsHeader = "PLAYER\tKILLS\tDEATHS";
         public const string GameOverNoScores = "No score data yet.";
+        public const string GameOverVoteTitle = "VOTE NEXT MAP";
+        public const string GameOverVoteRestart = "Restart map";
+        public const string GameOverVoteCountsFormat = "Votes — Restart:{0}  Arena:{1}  Plaza:{2}  Ruins:{3}";
+        public const string GameOverVoteTimerFormat = "Voting ends in {0}s";
+        public const string GameOverVotedFormat = "You voted: {0}";
+        public const string GameOverLeave = "Leave to main menu";
         public const string LeaderboardTitle = "SCOREBOARD";
         public const string CombatHealthFormat = "HP {0}/{1}";
         public const string CombatHealthDead = "DEAD — respawning…";
