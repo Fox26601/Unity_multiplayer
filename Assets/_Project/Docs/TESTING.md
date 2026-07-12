@@ -76,6 +76,7 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Join room page: session list loads without `JoinLobby … JoiningLobby` console errors
 - [ ] Mouse look smooth
 - [ ] Projectiles despawn on environment / corpses
+- [ ] Projectiles never hang mid-air: wall/player/bot hit despawns immediately; miss despawns ≤5s on host and proxy
 - [ ] Chat + whisper
 - [ ] Build mode place/remove
 - [ ] Session browser filters + started rooms not joinable (except known reconnect token)

@@ -5,7 +5,9 @@ using UnityEngine;
 
 namespace FusionMultiplayer.Player
 {
-    /// <summary>Networked trigger projectile for Combat mode damage.</summary>
+    /// <summary>
+    /// Combat projectile: SA advances networked position; Render applies it (no NetworkTransform fight).
+    /// </summary>
     [RequireComponent(typeof(SphereCollider))]
     public sealed class Projectile : NetworkBehaviour
     {
@@ -17,10 +19,11 @@ namespace FusionMultiplayer.Player
         private static readonly RaycastHit[] SweepHits = new RaycastHit[16];
 
         [Networked] public PlayerRef Shooter { get; private set; }
+        [Networked] private Vector3 NetPosition { get; set; }
+        [Networked] private TickTimer _lifetime { get; set; }
 
         private SphereCollider _collider;
         private Vector3 _velocity;
-        [Networked] private TickTimer _lifetime { get; set; }
         private bool _resolved;
         private bool _spawned;
         private PlayerRef _shooterRef;
@@ -41,6 +44,7 @@ namespace FusionMultiplayer.Player
         public override void Spawned()
         {
             _spawned = true;
+            _resolved = false;
             if (Shooter != PlayerRef.None)
                 _shooterRef = Shooter;
             else
@@ -48,8 +52,12 @@ namespace FusionMultiplayer.Player
                 _shooterRef = Object.InputAuthority;
                 Shooter = _shooterRef;
             }
+
+            NetPosition = transform.position;
             _velocity = transform.forward * Speed;
-            _lifetime = TickTimer.CreateFromSeconds(Runner, LifetimeSeconds);
+            if (HasStateAuthority)
+                _lifetime = TickTimer.CreateFromSeconds(Runner, LifetimeSeconds);
+
             IgnoreShooterCollisions();
         }
 
@@ -72,18 +80,32 @@ namespace FusionMultiplayer.Player
             }
 
             if (_resolved)
+            {
+                if (Runner != null && Runner.IsRunning && Object != null && Object.IsValid)
+                    Runner.Despawn(Object);
                 return;
+            }
 
+            var origin = NetPosition;
             var step = _velocity * Runner.DeltaTime;
-            if (TrySweepHit(transform.position, step, out var sweepCollider))
+            if (TrySweepHit(origin, step, out var sweepCollider))
             {
                 TryResolveCollision(sweepCollider);
                 if (_resolved)
                     return;
             }
 
-            transform.position += step;
+            NetPosition = origin + step;
+            transform.position = NetPosition;
             Physics.SyncTransforms();
+        }
+
+        public override void Render()
+        {
+            if (!_spawned)
+                return;
+
+            transform.position = NetPosition;
         }
 
         private void OnTriggerEnter(Collider other)
@@ -163,6 +185,10 @@ namespace FusionMultiplayer.Player
                     RegisterHit(victim, victimRef);
                     return;
                 }
+
+                // Contacted a player body but cannot award damage — still end the shot.
+                DespawnResolved();
+                return;
             }
 
             if (ProjectileHitSurface.TryGetBlockingSurface(other, out _))
@@ -181,11 +207,13 @@ namespace FusionMultiplayer.Player
             if (_resolved)
                 return;
 
-            if (!ValidateHit(victim, victimRef))
-                return;
+            if (ValidateHit(victim, victimRef))
+            {
+                var hitOrigin = NetPosition;
+                victim.RpcRegisterHit(Damage, _shooterRef, hitOrigin);
+            }
 
-            var hitOrigin = transform.position;
-            victim.RpcRegisterHit(Damage, _shooterRef, hitOrigin);
+            // Always despawn on intended target contact, even if damage validation fails.
             DespawnResolved();
         }
 
@@ -195,7 +223,7 @@ namespace FusionMultiplayer.Player
                 return;
 
             _resolved = true;
-            if (Runner != null && Runner.IsRunning)
+            if (Runner != null && Runner.IsRunning && Object != null && Object.IsValid)
                 Runner.Despawn(Object);
         }
 
@@ -204,7 +232,7 @@ namespace FusionMultiplayer.Player
             if (_shooterRef == PlayerRef.None || victimRef == PlayerRef.None || _shooterRef == victimRef)
                 return false;
 
-            var hitPos = transform.position;
+            var hitPos = NetPosition;
             var victimPos = victim.transform.position;
             var planar = hitPos - victimPos;
             planar.y = 0f;
