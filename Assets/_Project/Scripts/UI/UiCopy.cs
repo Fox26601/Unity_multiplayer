@@ -13,6 +13,7 @@ namespace FusionMultiplayer.UI
         public const string MainMenuBack = "Back";
         public const string MainMenuReconnect = "Reconnect to last room";
         public const string MainMenuQuickJoin = "Quick join";
+        public const string MainMenuLeaderboard = "Leaderboard";
         public const string CreatePageTitle = "CREATE ROOM";
         public const string JoinPageTitle = "JOIN ROOM";
         public const string JoinRoomDropdownLabel = "Available rooms";
@@ -31,6 +32,7 @@ namespace FusionMultiplayer.UI
             "Previous session found. Press Reconnect to restore control.";
         public const string CareerStatsTitle = "CAREER STATS";
         public const string CareerStatsEmpty = "No saved matches yet.";
+        public const string CareerStatsClose = "Close";
 
         public const string NicknameLabel = "Nickname";
         public const string RoomLabel = "Room name";

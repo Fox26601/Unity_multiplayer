@@ -11,7 +11,7 @@ namespace FusionMultiplayer.UI
     /// </summary>
     public static class MainMenuRuntimeRebuild
     {
-        private const int MenuBuildVersion = 21;
+        private const int MenuBuildVersion = 22;
         private const int MenuCompactText = 26;
         private const float FormLabelWidth = 168f;
         private const float LabelShareOfBlock = 0.32f;
@@ -159,14 +159,16 @@ namespace FusionMultiplayer.UI
             // --- Landing ---
             var nick = CreateColumnField(landingPage, "NicknameField", UiCopy.NicknameLabel,
                 UiCopy.NicknamePlaceholder, 0.58f, 0.74f);
-            CreateColumnLabel(landingPage, "ColorLabel", UiCopy.PlayerColorLabel, 0.48f, 0.54f);
-            var preview = CreateColorPreview(landingPage, 0.38f, 0.46f);
+            CreateColumnLabel(landingPage, "ColorLabel", UiCopy.PlayerColorLabel, 0.50f, 0.56f);
+            var preview = CreateColorPreview(landingPage, 0.40f, 0.48f);
             var randomColor = CreateColumnButton(landingPage, "BtnRandomColor", UiCopy.RandomColorButton,
-                0.38f, 0.46f, new Vector2(0.58f, 0.5f));
+                0.40f, 0.48f, new Vector2(0.58f, 0.5f));
+            var leaderboard = CreateColumnButton(landingPage, "BtnLeaderboard", UiCopy.MainMenuLeaderboard,
+                0.32f, 0.38f, new Vector2(0.5f, 1f), fullWidth: true);
             var goCreate = CreateColumnButton(landingPage, "BtnGoCreate", UiCopy.MainMenuGoCreate,
-                0.28f, 0.38f, new Vector2(0.5f, 1f), fullWidth: true);
+                0.24f, 0.30f, new Vector2(0.5f, 1f), fullWidth: true);
             var goJoin = CreateColumnButton(landingPage, "BtnGoJoin", UiCopy.MainMenuGoJoin,
-                0.16f, 0.26f, new Vector2(0.5f, 1f), fullWidth: true);
+                0.16f, 0.22f, new Vector2(0.5f, 1f), fullWidth: true);
             var quickJoin = CreateColumnButton(landingPage, "BtnQuickJoin", UiCopy.MainMenuQuickJoin,
                 0.08f, 0.14f, new Vector2(0.5f, 1f), fullWidth: true);
             var reconnect = CreateColumnButton(landingPage, "BtnReconnect", UiCopy.MainMenuReconnect,
@@ -233,7 +235,8 @@ namespace FusionMultiplayer.UI
                 emptyHint,
                 modeHint,
                 quickJoin,
-                reconnect);
+                reconnect,
+                leaderboard);
 
             createPage.gameObject.SetActive(false);
             joinPage.gameObject.SetActive(false);

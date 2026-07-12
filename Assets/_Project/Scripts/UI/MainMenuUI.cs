@@ -35,6 +35,7 @@ namespace FusionMultiplayer.UI
         [SerializeField] private Button _randomColorButton;
         [SerializeField] private Button _quickJoinButton;
         [SerializeField] private Button _reconnectButton;
+        [SerializeField] private Button _leaderboardButton;
         [SerializeField] private SessionFlowUI _sessionFlow;
         [SerializeField] private SessionBrowserUI _sessionBrowser;
 
@@ -88,7 +89,8 @@ namespace FusionMultiplayer.UI
             TMP_Text emptyHint,
             TMP_Text modeHint,
             Button quickJoin,
-            Button reconnect)
+            Button reconnect,
+            Button leaderboard)
         {
             _landingPage = landingPage;
             _createPage = createPage;
@@ -105,6 +107,7 @@ namespace FusionMultiplayer.UI
             _randomColorButton = randomColor;
             _quickJoinButton = quickJoin;
             _reconnectButton = reconnect;
+            _leaderboardButton = leaderboard;
             _sessionBrowser = browser;
             _nicknameLegacy = null;
             _roomLegacy = null;
@@ -147,6 +150,7 @@ namespace FusionMultiplayer.UI
             _randomColorButton?.onClick.RemoveListener(OnRandomColor);
             _quickJoinButton?.onClick.RemoveListener(OnQuickJoinClicked);
             _reconnectButton?.onClick.RemoveListener(OnReconnectClicked);
+            _leaderboardButton?.onClick.RemoveListener(OnLeaderboardClicked);
 
             if (_goCreateButton != null) _goCreateButton.onClick.AddListener(OnGoCreateClicked);
             if (_goJoinButton != null) _goJoinButton.onClick.AddListener(OnGoJoinClicked);
@@ -157,6 +161,7 @@ namespace FusionMultiplayer.UI
             if (_randomColorButton != null) _randomColorButton.onClick.AddListener(OnRandomColor);
             if (_quickJoinButton != null) _quickJoinButton.onClick.AddListener(OnQuickJoinClicked);
             if (_reconnectButton != null) _reconnectButton.onClick.AddListener(OnReconnectClicked);
+            if (_leaderboardButton != null) _leaderboardButton.onClick.AddListener(OnLeaderboardClicked);
 
             if (_sessionBrowser != null)
             {
@@ -200,6 +205,9 @@ namespace FusionMultiplayer.UI
             _joinSessionButton ??= panel.Find("JoinPage/FormRoot/JoinActionsRow/BtnJoin")?.GetComponent<Button>();
             _joinSessionButton ??= panel.Find("JoinPage/BtnJoin")?.GetComponent<Button>();
             _randomColorButton ??= panel.Find("LandingPage/BtnRandomColor")?.GetComponent<Button>();
+            _leaderboardButton ??= panel.Find("LandingPage/BtnLeaderboard")?.GetComponent<Button>();
+            _quickJoinButton ??= panel.Find("LandingPage/BtnQuickJoin")?.GetComponent<Button>();
+            _reconnectButton ??= panel.Find("LandingPage/BtnReconnect")?.GetComponent<Button>();
             _colorPreview ??= panel.Find("LandingPage/ColorPreview")?.GetComponent<Image>();
 
             _sessionBrowser ??= GetComponent<SessionBrowserUI>();
@@ -216,7 +224,6 @@ namespace FusionMultiplayer.UI
             UpdatePreview();
             ShowPage(MainMenuPage.Landing);
             RefreshReconnectButton();
-            GetComponent<CareerStatsHud>()?.Refresh();
         }
 
         private void RefreshReconnectButton()
@@ -225,6 +232,8 @@ namespace FusionMultiplayer.UI
             if (_reconnectButton != null)
                 _reconnectButton.gameObject.SetActive(has);
         }
+
+        private void OnLeaderboardClicked() => GetComponent<CareerStatsHud>()?.Open();
 
         private void OnQuickJoinClicked() => _ = StartQuickJoinAsync();
 
@@ -275,6 +284,7 @@ namespace FusionMultiplayer.UI
         public void ShowPage(MainMenuPage page)
         {
             CleanupDropdownOverlay();
+            GetComponent<CareerStatsHud>()?.Close();
 
             if (_landingPage != null)
                 _landingPage.SetActive(page == MainMenuPage.Landing);
@@ -404,6 +414,8 @@ namespace FusionMultiplayer.UI
                 _quickJoinButton.interactable = interactable;
             if (_reconnectButton != null)
                 _reconnectButton.interactable = interactable;
+            if (_leaderboardButton != null)
+                _leaderboardButton.interactable = interactable;
             if (_nicknameField != null)
                 _nicknameField.interactable = interactable;
             if (_roomField != null)
