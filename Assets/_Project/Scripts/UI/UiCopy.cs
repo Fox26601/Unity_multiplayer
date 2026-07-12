@@ -33,6 +33,8 @@ namespace FusionMultiplayer.UI
         public const string CareerStatsTitle = "CAREER STATS";
         public const string CareerStatsEmpty = "No saved matches yet.";
         public const string CareerStatsClose = "Close";
+        public const string NicknameTaken =
+            "Nickname already in use. Choose another name and try again.";
 
         public const string NicknameLabel = "Nickname";
         public const string RoomLabel = "Room name";

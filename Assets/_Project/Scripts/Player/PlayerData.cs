@@ -1,5 +1,7 @@
+using System;
 using Fusion;
 using FusionMultiplayer.Core;
+using FusionMultiplayer.UI;
 using UnityEngine;
 
 namespace FusionMultiplayer.Player
@@ -72,13 +74,74 @@ namespace FusionMultiplayer.Player
             if (!HasStateAuthority)
                 return;
 
-            Nick = string.IsNullOrWhiteSpace(nick.ToString()) ? "Player" : nick;
+            var requested = string.IsNullOrWhiteSpace(nick.ToString()) ? "Player" : nick.ToString().Trim();
+            var player = Object.InputAuthority;
+
+            if (IsNicknameTakenByOther(requested, player, token.ToString()))
+            {
+                Debug.LogWarning(
+                    $"[FusionMultiplayer] Rejected nickname \"{requested}\" for player {player.PlayerId} — already taken.");
+                RpcNicknameRejected(player);
+                ConnectionManager.Instance?.KickPlayerAfterNicknameReject(player, Object);
+                return;
+            }
+
+            Nick = requested;
             Tint = tint;
             ReconnectToken = token;
             IsBotControlled = false;
 
             if (GameManager.Instance != null)
-                GameManager.Instance.TryRestoreReconnect(Object.InputAuthority, token.ToString());
+                GameManager.Instance.TryRestoreReconnect(player, token.ToString());
+        }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        private void RpcNicknameRejected([RpcTarget] PlayerRef target)
+        {
+            if (Runner == null || Runner.LocalPlayer != target)
+                return;
+
+            ConnectionManager.NotifyNicknameRejected(UiCopy.NicknameTaken);
+        }
+
+        private static bool IsNicknameTakenByOther(string requested, PlayerRef self, string reconnectToken)
+        {
+            var canonical = CanonicalNickname(requested);
+            if (string.IsNullOrEmpty(canonical))
+                return false;
+
+            foreach (var other in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            {
+                if (other == null || other.Object == null || !other.Object.IsValid)
+                    continue;
+
+                // Own object (including reconnect reclaim of the same PlayerData).
+                if (other.Object.InputAuthority == self)
+                    continue;
+
+                // Reconnect reclaiming a bot-held body that still has our token but cleared authority.
+                if (!string.IsNullOrWhiteSpace(reconnectToken) &&
+                    string.Equals(other.ReconnectToken.ToString(), reconnectToken, StringComparison.Ordinal))
+                    continue;
+
+                if (string.Equals(CanonicalNickname(other.Nick.ToString()), canonical,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string CanonicalNickname(string nick)
+        {
+            if (string.IsNullOrWhiteSpace(nick))
+                return string.Empty;
+
+            var trimmed = nick.Trim();
+            if (trimmed.StartsWith("BOT ", StringComparison.OrdinalIgnoreCase))
+                trimmed = trimmed.Substring(4).Trim();
+
+            return trimmed;
         }
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]

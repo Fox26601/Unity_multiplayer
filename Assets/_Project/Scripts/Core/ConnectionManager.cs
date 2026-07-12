@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Fusion;
@@ -429,6 +430,46 @@ namespace FusionMultiplayer.Core
             await DisposeRunnerAsync();
             _sessionList.Clear();
             SceneManager.LoadScene(SceneIndices.MainMenu);
+        }
+
+        /// <summary>Client-side: show nickname reject and leave to main menu.</summary>
+        public static void NotifyNicknameRejected(string reason)
+        {
+            SessionFailed?.Invoke(reason);
+            if (Instance != null)
+                _ = Instance.ShutdownToMainMenuAsync();
+        }
+
+        /// <summary>
+        /// Server: let RpcNicknameRejected flush, then despawn PlayerData and disconnect the player.
+        /// </summary>
+        public void KickPlayerAfterNicknameReject(PlayerRef player, NetworkObject playerDataObject)
+        {
+            if (_runner == null || !NetworkAuthority.IsServerOrHost(_runner) || player == PlayerRef.None)
+                return;
+
+            StartCoroutine(KickPlayerAfterNicknameRejectRoutine(player, playerDataObject));
+        }
+
+        private IEnumerator KickPlayerAfterNicknameRejectRoutine(PlayerRef player, NetworkObject playerDataObject)
+        {
+            yield return null;
+            yield return null;
+
+            if (_runner == null || !_runner.IsRunning)
+                yield break;
+
+            if (playerDataObject != null && playerDataObject.IsValid)
+                _runner.Despawn(playerDataObject);
+
+            foreach (var active in _runner.ActivePlayers)
+            {
+                if (active == player)
+                {
+                    _runner.Disconnect(player);
+                    break;
+                }
+            }
         }
 
         private async Task DisposeRunnerAsync()

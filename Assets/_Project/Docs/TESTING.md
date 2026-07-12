@@ -62,6 +62,7 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 1. Finish a match (timer or End Game).
 2. Check `Application.persistentDataPath/fusion_match_stats.json`.
 3. Return to Main Menu — open **Leaderboard** → CAREER STATS modal shows rows (Close / Esc / click dim).
+4. Two clients with the same nickname: second is rejected with nickname-taken message and returned to menu.
 
 ## I — Dedicated server smoke
 
@@ -81,3 +82,4 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Build/Sandbox: E place / Q remove with no placement ghost; Sandbox removes any placed block; Build host can remove own blocks, others cannot remove host blocks
 - [ ] Session browser filters + started rooms not joinable (except known reconnect token)
 - [ ] Career Leaderboard button opens modal after at least one finished match; Close / Esc / dim dismiss it; no always-on corner panel
+- [ ] Duplicate nickname on join is rejected (second client sees failure and returns to menu)
