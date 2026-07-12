@@ -13,11 +13,13 @@ namespace FusionMultiplayer.Player
         private Transform _cameraPivot;
         private float _pitch;
         private float _yaw;
+        private BotBrain _botBrain;
 
         private void Awake()
         {
             _cameraPivot = transform.Find("PlayerCamera");
             _yaw = transform.eulerAngles.y;
+            _botBrain = GetComponent<BotBrain>();
         }
 
         public override void Spawned()
@@ -44,6 +46,36 @@ namespace FusionMultiplayer.Player
             base.Despawned(runner, hasState);
         }
 
+        /// <summary>Server bot aim: updates yaw/pitch toward a world point and applies rotation.</summary>
+        public void ApplyBotAim(Vector3 worldPoint)
+        {
+            if (!HasStateAuthority)
+                return;
+
+            var eye = _cameraPivot != null ? _cameraPivot.position : transform.position + Vector3.up * 1.5f;
+            var to = worldPoint - eye;
+            if (to.sqrMagnitude < 0.0001f)
+                return;
+
+            var flat = new Vector3(to.x, 0f, to.z);
+            if (flat.sqrMagnitude > 0.0001f)
+                _yaw = Quaternion.LookRotation(flat.normalized, Vector3.up).eulerAngles.y;
+
+            var pitch = -Mathf.Atan2(to.y, flat.magnitude) * Mathf.Rad2Deg;
+            _pitch = Mathf.Clamp(pitch, _minPitch, _maxPitch);
+            ApplyLookRotation();
+        }
+
+        public bool IsBotDriven
+        {
+            get
+            {
+                if (_botBrain == null)
+                    _botBrain = GetComponent<BotBrain>();
+                return _botBrain != null && _botBrain.IsActive;
+            }
+        }
+
         public override void FixedUpdateNetwork()
         {
             if (!HasStateAuthority)
@@ -52,6 +84,12 @@ namespace FusionMultiplayer.Player
             var avatar = GetComponent<PlayerAvatar>();
             if (avatar != null && !avatar.IsAlive)
                 return;
+
+            if (IsBotDriven)
+            {
+                transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+                return;
+            }
 
             if (HasInputAuthority)
             {
@@ -73,6 +111,13 @@ namespace FusionMultiplayer.Player
 
         public override void Render()
         {
+            if (IsBotDriven)
+            {
+                if (HasStateAuthority)
+                    ApplyLookRotation();
+                return;
+            }
+
             if (HasInputAuthority)
             {
                 var avatar = GetComponent<PlayerAvatar>();
