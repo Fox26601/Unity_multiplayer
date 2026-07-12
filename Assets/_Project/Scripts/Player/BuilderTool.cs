@@ -7,6 +7,7 @@ namespace FusionMultiplayer.Player
 {
     /// <summary>
     /// Minecraft-style block placement: crosshair raycast, 1 m grid snap, stacking (E / Q).
+    /// No placement ghost — aim is cache-only for input.
     /// </summary>
     public class BuilderTool : NetworkBehaviour
     {
@@ -18,8 +19,6 @@ namespace FusionMultiplayer.Player
 
         private CharacterController _characterController;
         private Transform _cameraTransform;
-        private GameObject _previewRoot;
-        private Renderer _previewRenderer;
         private NetworkButtons _previousButtons;
 
         private Vector3 _cachedPlacePosition;
@@ -27,7 +26,6 @@ namespace FusionMultiplayer.Player
         private bool _hasCachedPlace;
 
         private NetworkId _cachedRemoveTarget;
-        private Vector3 _cachedRemovePosition;
         private bool _hasCachedRemoveTarget;
         private bool _cachedRemoveValid;
 
@@ -40,16 +38,6 @@ namespace FusionMultiplayer.Player
         public override void Spawned()
         {
             _previousButtons = default;
-            if (HasInputAuthority)
-                EnsurePreviewGhost();
-        }
-
-        public override void Despawned(NetworkRunner runner, bool hasState)
-        {
-            if (_previewRoot != null)
-                Destroy(_previewRoot);
-
-            base.Despawned(runner, hasState);
         }
 
         public override void FixedUpdateNetwork()
@@ -67,6 +55,8 @@ namespace FusionMultiplayer.Player
 
             if (GameplayInputMode.IsGameplay)
                 RefreshAimCache();
+            else
+                ClearAimCache();
 
             if (input.Buttons.WasPressed(_previousButtons, GameplayButton.Place)
                 && _hasCachedPlace
@@ -85,62 +75,6 @@ namespace FusionMultiplayer.Player
             _previousButtons = input.Buttons;
         }
 
-        private void LateUpdate()
-        {
-            SessionRuntime.Refresh(Runner);
-
-            if (!HasInputAuthority || !GameplayInputMode.IsGameplay || !SessionRuntime.AllowsBuild)
-            {
-                ClearAimCache();
-                SetPreviewVisible(false);
-                return;
-            }
-
-            RefreshAimCache();
-
-            if (ShouldShowPlacePreview())
-            {
-                SetPreviewVisible(true);
-                _previewRoot.transform.position = _cachedPlacePosition;
-                _previewRoot.transform.rotation = Quaternion.identity;
-                _previewRoot.transform.localScale = Vector3.one * BuildGrid.TileSize;
-
-                if (_previewRenderer != null)
-                {
-                    _previewRenderer.material.color = _cachedPlaceValid
-                        ? new Color(0.35f, 0.95f, 0.45f, 0.42f)
-                        : new Color(0.95f, 0.35f, 0.35f, 0.42f);
-                }
-
-                return;
-            }
-
-            if (_hasCachedRemoveTarget && _cachedRemoveValid)
-            {
-                SetPreviewVisible(true);
-                _previewRoot.transform.position = _cachedRemovePosition;
-                _previewRoot.transform.rotation = Quaternion.identity;
-                _previewRoot.transform.localScale = Vector3.one * BuildGrid.TileSize;
-                if (_previewRenderer != null)
-                    _previewRenderer.material.color = new Color(0.95f, 0.35f, 0.35f, 0.5f);
-                return;
-            }
-
-            SetPreviewVisible(false);
-        }
-
-        private bool ShouldShowPlacePreview()
-        {
-            if (!_hasCachedPlace)
-                return false;
-
-            if (!_hasCachedRemoveTarget)
-                return true;
-
-            return Vector3.SqrMagnitude(_cachedPlacePosition - _cachedRemovePosition)
-                   > BuildGrid.HalfTile * BuildGrid.HalfTile * 0.25f;
-        }
-
         private void RefreshAimCache()
         {
             _hasCachedPlace = TryResolvePlacement(out _cachedPlacePosition);
@@ -151,7 +85,6 @@ namespace FusionMultiplayer.Player
             if (TryGetAimRay(out var ray) && TryGetAimedBlock(ray, out var block))
             {
                 _cachedRemoveTarget = block.Object.Id;
-                _cachedRemovePosition = block.transform.position;
                 _hasCachedRemoveTarget = true;
                 _cachedRemoveValid = CanRemoveBlock(block.Object);
             }
@@ -212,9 +145,9 @@ namespace FusionMultiplayer.Player
             SessionRuntime.Refresh(Runner);
 
             if (SessionRuntime.AllowsBreakAnyBlock)
-                return blockObject.InputAuthority != Object.InputAuthority;
+                return true;
 
-            // Build: session-host blocks cannot be removed by others.
+            // Build: host blocks removable only by host; everyone can remove non-host blocks.
             var hostPlayer = PlayerRef.None;
             foreach (var p in Runner.ActivePlayers)
             {
@@ -222,7 +155,10 @@ namespace FusionMultiplayer.Player
                 break;
             }
 
-            return blockObject.InputAuthority != hostPlayer;
+            if (blockObject.InputAuthority == hostPlayer)
+                return Object.InputAuthority == hostPlayer;
+
+            return true;
         }
 
         private bool TryResolvePlacement(out Vector3 cellCenter)
@@ -362,43 +298,6 @@ namespace FusionMultiplayer.Player
             var verticalOverlap = cellBottomY < playerTopY && cellTopY > playerFeetY;
 
             return horizontalOverlap && verticalOverlap;
-        }
-
-        private void EnsurePreviewGhost()
-        {
-            if (_previewRoot != null)
-                return;
-
-            _previewRoot = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            _previewRoot.name = "BlockPlacementPreview";
-            Destroy(_previewRoot.GetComponent<Collider>());
-
-            _previewRenderer = _previewRoot.GetComponent<Renderer>();
-            var shader = Shader.Find("Universal Render Pipeline/Lit")
-                         ?? Shader.Find("Standard")
-                         ?? Shader.Find("Diffuse");
-            if (shader != null)
-            {
-                var mat = new Material(shader);
-                mat.color = new Color(0.35f, 0.95f, 0.45f, 0.42f);
-                if (mat.HasProperty("_Surface"))
-                    mat.SetFloat("_Surface", 1f);
-                if (mat.HasProperty("_Blend"))
-                    mat.SetFloat("_Blend", 0f);
-                mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                mat.SetInt("_ZWrite", 0);
-                mat.renderQueue = 3000;
-                _previewRenderer.material = mat;
-            }
-
-            SetPreviewVisible(false);
-        }
-
-        private void SetPreviewVisible(bool visible)
-        {
-            if (_previewRoot != null)
-                _previewRoot.SetActive(visible);
         }
     }
 }

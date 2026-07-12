@@ -78,6 +78,6 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Projectiles despawn on environment / corpses
 - [ ] Projectiles never hang mid-air: wall/player/bot hit despawns immediately; miss despawns ≤5s on host and proxy
 - [ ] Chat + whisper
-- [ ] Build mode place/remove
+- [ ] Build/Sandbox: E place / Q remove with no placement ghost; Sandbox removes any placed block; Build host can remove own blocks, others cannot remove host blocks
 - [ ] Session browser filters + started rooms not joinable (except known reconnect token)
 - [ ] Career stats visible on main menu after at least one finished match
