@@ -14,7 +14,7 @@ namespace FusionMultiplayer.Player
         /// <summary>Call every Unity frame before Fusion polls <see cref="Sample"/>.</summary>
         public static void AccumulateKeyEdges()
         {
-            if (!GameplayInputMode.IsGameplay)
+            if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen)
                 return;
 
             var kb = Keyboard.current;
@@ -34,7 +34,7 @@ namespace FusionMultiplayer.Player
         /// <summary>Accumulate mouse look delta between Fusion ticks (~32 Hz).</summary>
         public static void AccumulateLook()
         {
-            if (!GameplayInputMode.IsGameplay)
+            if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen)
                 return;
 
             if (Cursor.lockState != CursorLockMode.Locked)
@@ -51,7 +51,8 @@ namespace FusionMultiplayer.Player
         public static bool TryReadLocalLookDelta(out Vector2 delta)
         {
             delta = default;
-            if (!GameplayInputMode.IsGameplay || Cursor.lockState != CursorLockMode.Locked)
+            if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen ||
+                Cursor.lockState != CursorLockMode.Locked)
                 return false;
 
             var mouse = Mouse.current;
@@ -66,7 +67,7 @@ namespace FusionMultiplayer.Player
         {
             AccumulateKeyEdges();
             data = default;
-            if (!GameplayInputMode.IsGameplay)
+            if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen)
                 return;
 
             var kb = Keyboard.current;

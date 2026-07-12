@@ -44,6 +44,7 @@ namespace FusionMultiplayer.UI
             ConnectionManager.SessionReady += OnSessionReadyHandler;
             ConnectionManager.SessionFailed += OnSessionFailed;
             ConnectionManager.SceneLoaded += OnSceneLoaded;
+            ConnectionManager.LocalDisconnectNotice += OnLocalDisconnect;
             SetStatus(string.Empty, false);
         }
 
@@ -53,6 +54,7 @@ namespace FusionMultiplayer.UI
             ConnectionManager.SessionReady -= OnSessionReadyHandler;
             ConnectionManager.SessionFailed -= OnSessionFailed;
             ConnectionManager.SceneLoaded -= OnSceneLoaded;
+            ConnectionManager.LocalDisconnectNotice -= OnLocalDisconnect;
         }
 
         public void SetStatus(string message, bool isError)
@@ -92,6 +94,12 @@ namespace FusionMultiplayer.UI
         {
             _isConnecting = false;
             SetStatus($"{UiCopy.StatusFailedPrefix}{reason}", true);
+        }
+
+        private void OnLocalDisconnect(string reason)
+        {
+            _isConnecting = false;
+            SetStatus($"{UiCopy.DisconnectNoticePrefix}{reason}", true);
         }
 
         private void OnSceneLoaded(string sceneName)

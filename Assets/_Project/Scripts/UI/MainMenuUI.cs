@@ -33,6 +33,8 @@ namespace FusionMultiplayer.UI
         [SerializeField] private Button _backFromJoinButton;
         [SerializeField] private Image _colorPreview;
         [SerializeField] private Button _randomColorButton;
+        [SerializeField] private Button _quickJoinButton;
+        [SerializeField] private Button _reconnectButton;
         [SerializeField] private SessionFlowUI _sessionFlow;
         [SerializeField] private SessionBrowserUI _sessionBrowser;
 
@@ -53,6 +55,8 @@ namespace FusionMultiplayer.UI
             if (_sessionFlow == null) _sessionFlow = GetComponent<SessionFlowUI>();
             if (_sessionFlow == null) _sessionFlow = gameObject.AddComponent<SessionFlowUI>();
             if (_sessionBrowser == null) _sessionBrowser = GetComponent<SessionBrowserUI>();
+            if (GetComponent<CareerStatsHud>() == null)
+                gameObject.AddComponent<CareerStatsHud>();
         }
 
         /// <summary>Called by MainMenuRuntimeRebuild after it creates TMP UI widgets.</summary>
@@ -73,13 +77,18 @@ namespace FusionMultiplayer.UI
             SessionBrowserUI browser,
             StringDropdownSelector createGameMode,
             StringDropdownSelector createMap,
+            StringDropdownSelector createDifficulty,
+            StringDropdownSelector createMaxPlayers,
             Toggle hiddenToggle,
             StringDropdownSelector joinGameMode,
             StringDropdownSelector joinMap,
+            StringDropdownSelector joinDifficulty,
             Transform sessionListContent,
             Button refresh,
             TMP_Text emptyHint,
-            TMP_Text modeHint)
+            TMP_Text modeHint,
+            Button quickJoin,
+            Button reconnect)
         {
             _landingPage = landingPage;
             _createPage = createPage;
@@ -94,14 +103,16 @@ namespace FusionMultiplayer.UI
             _joinSessionButton = joinSession;
             _colorPreview = colorPreview;
             _randomColorButton = randomColor;
+            _quickJoinButton = quickJoin;
+            _reconnectButton = reconnect;
             _sessionBrowser = browser;
             _nicknameLegacy = null;
             _roomLegacy = null;
             _wired = false;
             WireUi();
 
-            _sessionBrowser?.BindRuntime(createGameMode, createMap, hiddenToggle, joinGameMode, joinMap,
-                sessionListContent, refresh, joinSession, emptyHint, modeHint);
+            _sessionBrowser?.BindRuntime(createGameMode, createMap, createDifficulty, createMaxPlayers, hiddenToggle,
+                joinGameMode, joinMap, joinDifficulty, sessionListContent, refresh, joinSession, emptyHint, modeHint);
         }
 
         /// <summary>Legacy uGUI fields (fallback).</summary>
@@ -134,6 +145,8 @@ namespace FusionMultiplayer.UI
             _createButton?.onClick.RemoveListener(OnCreateClicked);
             _joinSessionButton?.onClick.RemoveListener(OnJoinSessionClicked);
             _randomColorButton?.onClick.RemoveListener(OnRandomColor);
+            _quickJoinButton?.onClick.RemoveListener(OnQuickJoinClicked);
+            _reconnectButton?.onClick.RemoveListener(OnReconnectClicked);
 
             if (_goCreateButton != null) _goCreateButton.onClick.AddListener(OnGoCreateClicked);
             if (_goJoinButton != null) _goJoinButton.onClick.AddListener(OnGoJoinClicked);
@@ -142,6 +155,8 @@ namespace FusionMultiplayer.UI
             if (_createButton != null) _createButton.onClick.AddListener(OnCreateClicked);
             if (_joinSessionButton != null) _joinSessionButton.onClick.AddListener(OnJoinSessionClicked);
             if (_randomColorButton != null) _randomColorButton.onClick.AddListener(OnRandomColor);
+            if (_quickJoinButton != null) _quickJoinButton.onClick.AddListener(OnQuickJoinClicked);
+            if (_reconnectButton != null) _reconnectButton.onClick.AddListener(OnReconnectClicked);
 
             if (_sessionBrowser != null)
             {
@@ -200,6 +215,61 @@ namespace FusionMultiplayer.UI
                 SetRoomText("Room1");
             UpdatePreview();
             ShowPage(MainMenuPage.Landing);
+            RefreshReconnectButton();
+            GetComponent<CareerStatsHud>()?.Refresh();
+        }
+
+        private void RefreshReconnectButton()
+        {
+            var has = SessionReconnectStore.TryLoad(out _, out _, out _);
+            if (_reconnectButton != null)
+                _reconnectButton.gameObject.SetActive(has);
+        }
+
+        private void OnQuickJoinClicked() => _ = StartQuickJoinAsync();
+
+        private void OnReconnectClicked() => _ = StartReconnectAsync();
+
+        private async Task StartQuickJoinAsync()
+        {
+            if (_sessionFlow != null && _sessionFlow.IsConnecting)
+                return;
+
+            ApplySessionFields();
+            SetMenuInteractable(false);
+            if (ConnectionManager.Instance == null)
+            {
+                _sessionFlow?.SetStatus("ConnectionManager is missing in this scene.", true);
+                SetMenuInteractable(true);
+                return;
+            }
+
+            var ok = await ConnectionManager.Instance.QuickJoinAsync();
+            if (!ok)
+                SetMenuInteractable(true);
+        }
+
+        private async Task StartReconnectAsync()
+        {
+            if (!SessionReconnectStore.TryLoad(out var room, out var token, out var mode))
+            {
+                _sessionFlow?.SetStatus(UiCopy.QuickJoinNoMatch, true);
+                return;
+            }
+
+            SessionData.SetReconnectToken(token);
+            SessionData.SelectedGameMode = mode;
+            ApplySessionFields();
+            SetMenuInteractable(false);
+            if (ConnectionManager.Instance == null)
+            {
+                SetMenuInteractable(true);
+                return;
+            }
+
+            var ok = await ConnectionManager.Instance.ReconnectSessionAsync(room);
+            if (!ok)
+                SetMenuInteractable(true);
         }
 
         public void ShowPage(MainMenuPage page)
@@ -286,12 +356,17 @@ namespace FusionMultiplayer.UI
             SetMenuInteractable(false);
             _sessionBrowser?.SetJoinInProgress(true);
 
-            if (ConnectionManager.Instance == null)
+            var cm = ConnectionManager.Instance;
+            if (cm == null)
             {
-                _sessionFlow?.SetStatus("ConnectionManager is missing in this scene.", true);
-                SetMenuInteractable(true);
-                _sessionBrowser?.SetJoinInProgress(false);
-                return;
+                cm = FindFirstObjectByType<ConnectionManager>();
+                if (cm == null)
+                {
+                    _sessionFlow?.SetStatus(UiCopy.SessionBrowserNoConnection, true);
+                    SetMenuInteractable(true);
+                    _sessionBrowser?.SetJoinInProgress(false);
+                    return;
+                }
             }
 
             var room = !string.IsNullOrWhiteSpace(roomOverride) ? roomOverride.Trim() : GetRoomText();
@@ -299,8 +374,8 @@ namespace FusionMultiplayer.UI
                 room = "Room1";
 
             var ok = create
-                ? await ConnectionManager.Instance.CreateSessionAsync(room)
-                : await ConnectionManager.Instance.JoinSessionAsync(room);
+                ? await cm.CreateSessionAsync(room)
+                : await cm.JoinSessionAsync(room);
 
             if (!ok)
             {
@@ -325,6 +400,10 @@ namespace FusionMultiplayer.UI
                 _joinSessionButton.interactable = interactable;
             if (_randomColorButton != null)
                 _randomColorButton.interactable = interactable;
+            if (_quickJoinButton != null)
+                _quickJoinButton.interactable = interactable;
+            if (_reconnectButton != null)
+                _reconnectButton.interactable = interactable;
             if (_nicknameField != null)
                 _nicknameField.interactable = interactable;
             if (_roomField != null)

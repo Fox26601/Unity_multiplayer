@@ -6,10 +6,12 @@ using Fusion;
 using FusionMultiplayer.Chat;
 using FusionMultiplayer.Core;
 using FusionMultiplayer.Environment;
+using FusionMultiplayer.Networking;
 using FusionMultiplayer.Player;
 using FusionMultiplayer.UI;
 using TMPro;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -67,10 +69,13 @@ namespace FusionMultiplayer.EditorTools
             Directory.CreateDirectory(PrefabsPath);
 
             CreateEnvironmentPrefabs();
+            CreatePlayerLocomotionController();
             CreatePlayerDataPrefab();
             CreatePlacedBlockPrefab();
             CreateProjectilePrefab();
+            CreatePhysicsPropPrefab();
             CreatePlayerAvatarPrefab();
+            CreateBootScene();
 
             CreateMainMenuScene();
             CreateLobbyScene();
@@ -80,6 +85,7 @@ namespace FusionMultiplayer.EditorTools
 
             EditorBuildSettings.scenes = new[]
             {
+                new EditorBuildSettingsScene($"{ScenesPath}/00_Boot.unity", true),
                 new EditorBuildSettingsScene($"{ScenesPath}/00_MainMenu.unity", true),
                 new EditorBuildSettingsScene($"{ScenesPath}/01_Lobby.unity", true),
                 new EditorBuildSettingsScene($"{ScenesPath}/02_Game_Arena.unity", true),
@@ -107,15 +113,77 @@ namespace FusionMultiplayer.EditorTools
             GenerateEnvironmentPrefabsMenu();
         }
 
+        [MenuItem("Tools/Fusion Multiplayer/Wire PhysicsProp And Boot Only")]
+        public static void WirePhysicsPropAndBootOnly()
+        {
+            Directory.CreateDirectory(PrefabsPath);
+            CreatePhysicsPropPrefab();
+            CreateBootScene();
+
+            var scenes = new List<EditorBuildSettingsScene>
+            {
+                new EditorBuildSettingsScene($"{ScenesPath}/00_Boot.unity", true),
+                new EditorBuildSettingsScene($"{ScenesPath}/00_MainMenu.unity", true),
+                new EditorBuildSettingsScene($"{ScenesPath}/01_Lobby.unity", true),
+                new EditorBuildSettingsScene($"{ScenesPath}/02_Game_Arena.unity", true),
+                new EditorBuildSettingsScene($"{ScenesPath}/03_Game_Plaza.unity", true),
+                new EditorBuildSettingsScene($"{ScenesPath}/04_Game_Ruins.unity", true)
+            };
+            EditorBuildSettings.scenes = scenes.ToArray();
+
+            WirePhysicsPropIntoOpenGameScenes();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("Fusion Multiplayer: PhysicsProp + 00_Boot wired (animator not touched).");
+        }
+
+        private static void WirePhysicsPropIntoOpenGameScenes()
+        {
+            var physicsProp = AssetDatabase.LoadAssetAtPath<NetworkObject>($"{PrefabsPath}/PhysicsProp.prefab");
+            if (physicsProp == null)
+                return;
+
+            var mapScenes = new[]
+            {
+                $"{ScenesPath}/02_Game_Arena.unity",
+                $"{ScenesPath}/03_Game_Plaza.unity",
+                $"{ScenesPath}/04_Game_Ruins.unity",
+                $"{ScenesPath}/02_Game.unity"
+            };
+
+            foreach (var path in mapScenes)
+            {
+                if (!System.IO.File.Exists(path))
+                    continue;
+
+                var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                var gm = Object.FindFirstObjectByType<GameManager>();
+                if (gm != null)
+                {
+                    var so = new SerializedObject(gm);
+                    var prop = so.FindProperty("_physicsPropPrefab");
+                    if (prop != null)
+                    {
+                        prop.objectReferenceValue = physicsProp;
+                        so.ApplyModifiedPropertiesWithoutUndo();
+                        EditorSceneManager.MarkSceneDirty(scene);
+                        EditorSceneManager.SaveScene(scene);
+                    }
+                }
+            }
+        }
+
         [MenuItem("Tools/Fusion Multiplayer/Regenerate Combat Prefabs")]
         public static void RegenerateCombatPrefabs()
         {
             Directory.CreateDirectory(PrefabsPath);
+            // Animator / locomotion intentionally skipped in remaining-work pass.
             CreateProjectilePrefab();
+            CreatePhysicsPropPrefab();
             CreatePlayerAvatarPrefab();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("Fusion Multiplayer: Projectile + PlayerAvatar prefabs regenerated. Register Projectile in Fusion Hub.");
+            Debug.Log("Fusion Multiplayer: Combat prefabs regenerated (Projectile, PhysicsProp, PlayerAvatar).");
         }
 
         /// <summary>Unity batchmode entry point.</summary>
@@ -216,6 +284,8 @@ namespace FusionMultiplayer.EditorTools
             go.AddComponent<PlayerLook>();
             go.AddComponent<BuilderTool>();
             go.AddComponent<PlayerWeapon>();
+            go.AddComponent<PlayerAnimationSync>();
+            go.AddComponent<NetworkMecanimAnimator>();
 
             var hitboxGo = new GameObject("Hitbox");
             hitboxGo.transform.SetParent(go.transform, false);
@@ -231,6 +301,19 @@ namespace FusionMultiplayer.EditorTools
             vis.transform.SetParent(go.transform, false);
             vis.transform.localPosition = new Vector3(0f, 1f, 0f);
             Object.DestroyImmediate(vis.GetComponent<CapsuleCollider>());
+            var anim = vis.AddComponent<Animator>();
+            var controller =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    $"{Root}/Resources/PlayerLocomotion.controller");
+            if (controller != null)
+                anim.runtimeAnimatorController = controller;
+
+            var netAnim = go.GetComponent<NetworkMecanimAnimator>();
+            var naso = new SerializedObject(netAnim);
+            var animProp = naso.FindProperty("Animator");
+            if (animProp != null)
+                animProp.objectReferenceValue = anim;
+            naso.ApplyModifiedPropertiesWithoutUndo();
 
             var tagGo = new GameObject("NameTag");
             tagGo.transform.SetParent(go.transform, false);
@@ -264,6 +347,75 @@ namespace FusionMultiplayer.EditorTools
 
             PrefabUtility.SaveAsPrefabAsset(go, $"{PrefabsPath}/PlayerAvatar.prefab");
             Object.DestroyImmediate(go);
+        }
+
+        private static void CreatePhysicsPropPrefab()
+        {
+            var go = new GameObject("PhysicsProp");
+            go.AddComponent<NetworkObject>();
+            go.AddComponent<NetworkTransform>();
+            var rb = go.AddComponent<Rigidbody>();
+            rb.mass = 2f;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            go.AddComponent<NetworkRigidbody3D>();
+            go.AddComponent<PhysicsProp>();
+            var col = go.AddComponent<SphereCollider>();
+            col.radius = 0.45f;
+
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            visual.name = "Visual";
+            visual.transform.SetParent(go.transform, false);
+            visual.transform.localScale = Vector3.one * 0.9f;
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            var renderer = visual.GetComponent<Renderer>();
+            if (renderer != null)
+                renderer.material.color = new Color(0.2f, 0.75f, 1f, 1f);
+
+            PrefabUtility.SaveAsPrefabAsset(go, $"{PrefabsPath}/PhysicsProp.prefab");
+            Object.DestroyImmediate(go);
+        }
+
+        private static void CreatePlayerLocomotionController()
+        {
+            Directory.CreateDirectory($"{Root}/Resources");
+            var path = $"{Root}/Resources/PlayerLocomotion.controller";
+            if (AssetDatabase.LoadAssetAtPath<AnimatorController>(path) != null)
+                return;
+
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+            controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("Shoot", AnimatorControllerParameterType.Bool);
+
+            var root = controller.layers[0].stateMachine;
+            var idle = root.AddState("Idle");
+            var run = root.AddState("Run");
+            var air = root.AddState("Air");
+            root.defaultState = idle;
+
+            var idleToRun = idle.AddTransition(run);
+            idleToRun.AddCondition(AnimatorConditionMode.Greater, 0.15f, "Speed");
+            idleToRun.hasExitTime = false;
+
+            var runToIdle = run.AddTransition(idle);
+            runToIdle.AddCondition(AnimatorConditionMode.Less, 0.15f, "Speed");
+            runToIdle.hasExitTime = false;
+
+            var anyToAir = root.AddAnyStateTransition(air);
+            anyToAir.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
+            anyToAir.hasExitTime = false;
+
+            var airToIdle = air.AddTransition(idle);
+            airToIdle.AddCondition(AnimatorConditionMode.If, 0f, "Grounded");
+            airToIdle.AddCondition(AnimatorConditionMode.Less, 0.15f, "Speed");
+            airToIdle.hasExitTime = false;
+
+            var airToRun = air.AddTransition(run);
+            airToRun.AddCondition(AnimatorConditionMode.If, 0f, "Grounded");
+            airToRun.AddCondition(AnimatorConditionMode.Greater, 0.15f, "Speed");
+            airToRun.hasExitTime = false;
+
+            AssetDatabase.SaveAssets();
         }
 
         private static void CreateMainMenuScene()
@@ -374,8 +526,10 @@ namespace FusionMultiplayer.EditorTools
             gmGo.AddComponent<NetworkObject>();
             var gm = gmGo.AddComponent<GameManager>();
             var avatarPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>($"{PrefabsPath}/PlayerAvatar.prefab");
+            var physicsProp = AssetDatabase.LoadAssetAtPath<NetworkObject>($"{PrefabsPath}/PhysicsProp.prefab");
             var gmSo = new SerializedObject(gm);
             gmSo.FindProperty("_playerAvatarPrefab").objectReferenceValue = avatarPrefab;
+            gmSo.FindProperty("_physicsPropPrefab").objectReferenceValue = physicsProp;
             var spProp = gmSo.FindProperty("_spawnPoints");
             spProp.arraySize = 10;
             for (var i = 0; i < 10; i++)
@@ -399,6 +553,8 @@ namespace FusionMultiplayer.EditorTools
             goCanvas.gameObject.AddComponent<CrosshairHud>();
             goCanvas.gameObject.AddComponent<LeaderboardUI>();
             goCanvas.gameObject.AddComponent<MatchTimerHud>();
+            goCanvas.gameObject.AddComponent<MatchInfoHud>();
+            goCanvas.gameObject.AddComponent<PauseMenuUI>();
             var masterBtn = UiSceneLayout.CreateButton(goCanvas.transform, "BtnEndGame", "END GAME", new Vector2(320f, 64f));
             var masterRt = masterBtn.GetComponent<RectTransform>();
             masterRt.anchorMin = new Vector2(0.82f, 0.58f);
@@ -448,6 +604,14 @@ namespace FusionMultiplayer.EditorTools
             goSo.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene, $"{ScenesPath}/{sceneFileName}.unity");
+        }
+
+        private static void CreateBootScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var boot = new GameObject("BootLoader");
+            boot.AddComponent<BootLoader>();
+            EditorSceneManager.SaveScene(scene, $"{ScenesPath}/00_Boot.unity");
         }
     }
 }

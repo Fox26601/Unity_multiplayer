@@ -55,6 +55,20 @@ namespace FusionMultiplayer.Player
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
         private void RpcFire()
         {
+            ServerFire();
+        }
+
+        /// <summary>Server / bot fire path (StateAuthority only).</summary>
+        public void ServerBotFire()
+        {
+            if (!HasStateAuthority)
+                return;
+
+            ServerFire();
+        }
+
+        private void ServerFire()
+        {
             if (!SessionRuntime.AllowsShoot || _projectilePrefab == null || Runner == null || !Runner.IsRunning)
                 return;
 
@@ -70,6 +84,7 @@ namespace FusionMultiplayer.Player
 
             Runner.Spawn(_projectilePrefab, position, rotation, Object.InputAuthority);
             _fireCooldown = TickTimer.CreateFromSeconds(Runner, FireCooldownSeconds);
+            GetComponent<PlayerAnimationSync>()?.PulseShoot();
         }
 
         private bool TryGetMuzzlePose(out Vector3 position, out Quaternion rotation)

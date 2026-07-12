@@ -254,22 +254,8 @@ namespace FusionMultiplayer.UI
 
         private void OnApproved(int index, Vector3 position, Quaternion rotation)
         {
+            // Server already spawned the avatar (Client-Server / Dedicated Server).
             _pendingSlot = -1;
-            var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
-            if (!GameSceneReadiness.TryGetGameManager(out var gm) || runner == null || gm.PlayerAvatarPrefab == null)
-                return;
-
-            var avatar = runner.Spawn(gm.PlayerAvatarPrefab, position, rotation, runner.LocalPlayer);
-            if (avatar != null)
-            {
-                var pa = avatar.GetComponent<PlayerAvatar>();
-                if (pa != null) pa.CharacterSlot = index;
-            }
-
-            var pd = FindLocalPlayerData();
-            if (pd != null && pd.Object != null && pd.Object.HasStateAuthority)
-                pd.CharacterIndex = index;
-
             _hasSpawnedAvatar = true;
             if (_panelRoot != null) _panelRoot.SetActive(false);
             SetStatusText(UiCopy.CharacterSpawned);

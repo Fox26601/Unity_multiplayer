@@ -128,7 +128,7 @@ namespace FusionMultiplayer.Player
             if (planar.sqrMagnitude > MaxHitDistance * MaxHitDistance)
                 return;
 
-            ApplyDamageInternal(damage, attacker);
+            ApplyDamageInternal(GameManager.RollDamage(damage), attacker);
         }
 
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -263,10 +263,11 @@ namespace FusionMultiplayer.Player
 
         private void PushFromLocalPlayerData()
         {
+            var owner = Object.InputAuthority;
             foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
             {
                 if (pd.Object == null || !pd.Object.IsValid) continue;
-                if (pd.Object.InputAuthority != Runner.LocalPlayer) continue;
+                if (pd.Object.InputAuthority != owner) continue;
                 VisualTint = pd.Tint;
                 DisplayName = pd.Nick;
                 return;

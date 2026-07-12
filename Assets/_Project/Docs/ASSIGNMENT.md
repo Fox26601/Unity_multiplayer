@@ -1,92 +1,82 @@
-# Assignment checklist — Fusion Multiplayer
+# Final Project — Fusion Multiplayer (Dedicated Server / Client-Server)
 
 ## Submission metadata
 
 | Field | Value |
 |-------|--------|
 | **Author** | Daniil Gorlov |
-| **Group** | **Solo** — Daniil Gorlov only (sole author and implementer). Coursework normally expects groups of 3; this repository is an **individual submission**. |
-| **Assignment 1 due** | 16 June 2026 (inclusive) |
-| **Assignment 3 due** | 8 July 2026, 00:00 (see matrix below — in progress on branch `feature/shooting-assignment`) |
-| **Course** | Photon Fusion 2 multiplayer (Unity 6, Shared Mode) |
+| **Group** | Solo |
+| **Course** | Photon Fusion 2 multiplayer (Unity 6) |
+| **Topology** | Dedicated Server (`GameMode.Server`) + Host create / Client join for editor play |
+| **Branch** | `feature/final-project` |
 
-## Assignment 1 — requirements matrix (shipped)
+## Scenes
 
-| # | Requirement (assignment) | Implementation | Status |
-|---|--------------------------|----------------|--------|
-| 1 | Create or join a room | `MainMenuUI`, `ConnectionManager.StartSessionAsync` | Done |
-| 2 | Unknown player count (up to 10), dynamic join | `PlayerCount = 10`, late-join via `GameSceneReadiness` | Done |
-| 3 | Lobby scene separate from game scene | `01_Lobby` → `02_Game`, `LobbyUI` Start Game | Done |
-| 4 | 10 characters; request to MasterClient | `GameManager.RPC_RequestCharacter`, `CharacterSelectUI` | Done |
-| 5 | Taken character visible to all players | `[Networked] NetworkArray<PlayerRef>`, `CharacterSlotButton` | Done |
-| 6 | Master approves spawn at spawn point | `RPC_CharacterApproved`, `runner.Spawn` | Done |
-| 7 | Reject if taken; player picks another | `RPC_CharacterRejected` | Done |
-| 8 | Sync position and rotation | `NetworkTransform` on `PlayerAvatar` | Done |
-| 9 | Spawn / Despawn objects | `BuilderTool`, `PlacedBlock` (E / Q) | Done |
-| 10 | Global chat | `ChatManager` broadcast RPC | Done |
-| 11 | Private message to one player (UI) | PM dropdown + whisper RPC in `ChatUI` | Done |
-| 12 | Master ends game → menu → main menu | `GameOverUI`, `MasterSetGameOver`, `ShutdownToMainMenuAsync` | Done |
-| 13 | Test with at least 3 clients | See `TESTING.md` scenarios A + B | Done |
+| Scene | Role |
+|-------|------|
+| `00_Boot` | Opening bootstrap (`BootLoader`) → loads Main Menu |
+| `00_MainMenu` | Profile, create/join, session browser, quick join, reconnect, career stats |
+| `01_Lobby` | Player list; host/server starts match (clients may request start) |
+| `02_Game_Arena` / `03_Game_Plaza` / `04_Game_Ruins` | Multiplayer gameplay maps |
 
-### Bonus
+## Mandatory requirements (40) — how implemented
 
-| # | Requirement | Implementation | Status |
-|---|-------------|----------------|--------|
-| B1 | Nickname visible to all | `PlayerData.Nick`, lobby list, nameplate | Done |
-| B2 | Unique color in chat and on player | `PlayerData.Tint`, chat tint, avatar material | Done |
+| # | Requirement | Implementation |
+|---|-------------|----------------|
+| 1 | Open / join room, ≥3 players, configurable capacity | `ConnectionManager.StartSessionAsync`, `SessionData.MaxPlayers` (2–10), create UI dropdown |
+| 2 | ≥3 RPCs with different variable types | e.g. `RPC_RequestCharacter(int, PlayerRef)`, `RPC_CharacterApproved(..., Vector3, Quaternion)`, `RPC_Broadcast(NetworkString)`, `RpcRegisterHit(float, PlayerRef, Vector3)` |
+| 3 | JSON Serialize + Deserialize (≥3 fields) via RPC | `MatchConfigDto` → `JsonUtility` → `GameManager.RPC_SubmitMatchConfigJson(NetworkString<_512>)` → deserialize + ack |
+| 4 | NetworkTransform | On `PlayerAvatar`, `Projectile`, blocks |
+| 5 | New Input System | `GameplayInput` / `GameplayNetworkInput` + `OnInput` |
+| 6 | Client can become master (N/A for dedicated) | Waived by assignment for Dedicated Server |
+| 7 | Scene changes via master/Photon | `ConnectionManager.ServerStartMatch` / `Runner.LoadScene` on server |
+| 8 | UI split host vs client | Lobby start authority messaging; create-room settings only on create page |
+| 9 | Character select, unique slots, server owns occupancy | `GameManager.CharacterOwners`, server spawns avatar |
+| 10 | ≥3 server-only random decisions | (1) spawn jitter `GetRandomizedSpawn`, (2) `MatchEventId`, (3) crit `RollDamage` + vote tie-break |
+| 11 | End condition → results UI with scores | `MatchTimer` → `MasterSetGameOver` → `GameOverUI` |
+| 12 | Synced score system | `PlayerData.Score` / `Deaths` `[Networked]` |
+| 13 | Close room, return to menu, valid loop | `SessionLock`, `ShutdownToMainMenuAsync`, map vote restart |
+| 14 | NetworkRunner.Spawn / Despawn | Avatars, projectiles, blocks, physics props |
 
-## Assignment 3 — requirements matrix (8.7.26, solo — Daniil Gorlov)
+## Bonus — how implemented
 
-| # | Requirement | Implementation | Status |
-|---|-------------|----------------|--------|
-| 1 | Hidden session (checkbox) | `SessionBrowserUI`, `SessionData.HiddenSession`, `ConnectionManager` `IsVisible` | Done |
-| 2 | Started session visible in lobby but not joinable | `SessionCatalog.IsSessionStarted`, `SessionBrowserUI` disabled STARTED rows | Done |
-| 3 | Session browser filtered by Game Mode | `SessionCatalog.LobbyNameForMode`, `ConnectionManager.RefreshSessionLobbyAsync` | Done |
-| 4 | Preferred map filter with X-second fallback | `SessionBrowserUI` map timer, `SessionCatalog.MapFilterTimeoutSeconds` | Done |
-| 5 | Character control via Input System + `FixedUpdateNetwork` | `GameplayInput`, `PlayerMovement`, `PlayerLook`, `PlayerWeapon` | Done |
-| 6 | Spawn trigger objects (projectiles) | `Projectile`, `PlayerWeapon` | Done |
-| 7 | Trigger ignores spawner | `Projectile.IgnoreShooterCollisions`, shooter skip | Done |
-| 8 | Destroy spawned objects | `Projectile.DespawnResolved`, `BuilderTool` despawn | Done |
-| 9 | Lock join when lobby → game | `SessionLock`, `LobbyUI`, `ConnectionManager.OnConnectRequest` | Done |
-| 10 | Trigger collision on projectiles | `Projectile.OnTriggerEnter`, sphere sweep | Done |
-| 11 | Local VFX on hit | `PlayerAvatar.OnHitCountChanged` → `SpawnLocalHitBurst` | Done |
-| 12 | Collider owner fires RPC | `Projectile` → `PlayerAvatar.RpcRegisterHit` | Done |
-| 13 | RPC updates `[Networked]` value | `HitCount`, `PlayerData.Score` | Done |
-| 14 | `OnChangedRender` on networked value | `PlayerAvatar.HitCount`, `GameManager.IsGameOver` | Done |
-| 15 | RPC validation (distance, source) | `PlayerAvatar.RpcRegisterHit`, `Projectile.ValidateHit` | Done |
-| 16 | Session locked after game start | `SessionLock` (`IsOpen=false`, `phase=Started`) | Done |
-| 17 | Hidden score; master/timer ends match; results + map vote | `PlayerData.Score`, `MatchTimer`, `RpcBroadcastGameOver`, `GameOverUI` vote | Done |
-| 18 | Game rules support master client migration | `GameManager` snapshots, `IAfterHostMigration`, `ConnectionManager.OnHostMigration` | Done |
-| B1 | Game Mode changes gameplay (Build / Combat / Sandbox) | `SessionRuntime` gates | Done |
-| B2 | Networked Animator (≥3 states) | Optional bonus | Not started |
+| Bonus | Points | Status | Implementation |
+|-------|--------|--------|----------------|
+| Room settings for creator | 6 | Done | Mode / map / difficulty / max players / hidden |
+| NetworkMecanimAnimator | 8 | **Deferred** | Not claimed this submission |
+| NetworkRigidbody3D | 5 | Done | `Networking.NetworkRigidbody3D` + `PhysicsProp` |
+| ≥5 `[Networked]` vars | 7 | Done | Health, Score, slots, timers, votes, tokens, etc. |
+| Session list + player counts | 5 | Done | `SessionBrowserUI` |
+| Join error handling | 3 | Done | `FormatStartGameError`, refuse full/started |
+| Local + remote disconnect | 3 | Done | `LocalDisconnectNotice` → `SessionFlowUI` |
+| Crash reconnect + full control | 15 | Done | `ConnectionToken` + `SessionReconnectTokens` + `AssignInputAuthority` |
+| Master announces start | 3 | Done | Lobby START → server `LoadScene` |
+| Join validation vs master/server | 5 | Done | Token validation + JSON config RPC |
+| Bot replaces disconnected player | 15 | Done | `BotTakeover` + `BotBrain` |
+| Random join by ≥3 settings | 5 | Done | `QuickJoinAsync` |
+| Dynamic matchmaking | 5 | Done | Periodic lobby refresh |
+| Database read/write | 8 | Done | `MatchStatsDatabase` write + `CareerStatsHud` read |
+| Dedicated Server | 55 | Done | `-dedicated` / `-room=Name` |
+| Surprise | 10 | Done | Match event, physics props, map vote, Tab scoreboard, whisper |
 
-## How to verify before submission (Assignment 1)
+## Dedicated server runbook
 
-1. Run **Tools → Fusion Multiplayer → Validate Setup** and **Validate UI In Scenes**
-2. **Scenario A** — all 3 clients in lobby before Start Game (`TESTING.md`)
-3. **Scenario B** — Player 3 joins **after** P1+P2 are in game (`TESTING.md` late-join test)
-4. Console: no red errors; `[FusionMultiplayer][Game] ready` on late joiner
+1. Build a **Server** (or normal) player with Photon AppId configured.
+2. Launch: `MyGame.exe -batchmode -nographics -dedicated -room=Ded1` (macOS/Linux: same args after the binary).
+3. Clients: open game → Join room name `Ded1` (same mode lobby) or create matching filters then join.
+4. Any client can press **START GAME** (RPC to server). Server loads the map.
+5. Logs: look for `[FusionMultiplayer] Starting dedicated server room`.
 
-## How to verify before submission (Assignment 3)
+Editor shortcut: Host create (no `-dedicated`) still uses Client-Server authority for local testing.
 
-1. MPPM: 3 virtual players — session browser, mode/map filters, hidden session
-2. After master **START GAME**, 4th client **cannot** join (rejected or session shows **STARTED**)
-3. **Combat** / **Sandbox**: LMB fires projectile; Tab shows live score; **5:00** match timer; on expiry (or master **End Game**) results + map vote; leave to main menu
-4. Host blocks cannot be broken by other players (`BuilderTool` rule from Assignment 1)
+## Setup after pull
 
-## Architecture (OOP / patterns)
-
-| Layer | Responsibility | Key types |
-|-------|----------------|-----------|
-| **Core** | Session, scene authority, readiness | `ConnectionManager`, `GameManager`, `GameSceneReadiness` |
-| **UI** | Display and input only | `CharacterSelectUI`, `ChatUI`, `LobbyUI` |
-| **Bridge** | Decouple RPC callbacks from UI | `CharacterSelectBridge` |
-| **Facade** | Resolve networked services | `GameSceneReadiness.TryGetGameManager` |
-| **Observer** | Readiness and slot events | `GameManagerReady`, `CharacterSelectBridge.SlotsChanged` |
-| **Player** | Movement and building | `PlayerAvatar`, `BuilderTool` |
-| **Chat** | Messaging domain | `ChatManager`, `ChatUI` |
+1. Confirm Build Settings: `00_Boot` → MainMenu → Lobby → maps.
+2. Fusion Hub: `PhysicsProp` labeled `FusionPrefab` (same as other network prefabs).
+3. Optional: **Tools → Fusion Multiplayer → Wire PhysicsProp And Boot Only**.
+4. Do **not** claim NetworkMecanimAnimator until that pass is done.
 
 ## Related docs
 
-- Setup: [`SETUP.md`](SETUP.md)
 - Testing: [`TESTING.md`](TESTING.md)
+- Setup: [`SETUP.md`](SETUP.md)

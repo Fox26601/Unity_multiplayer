@@ -5,17 +5,32 @@ namespace FusionMultiplayer.UI
     {
         public const string MainMenuTitle = "FUSION MULTIPLAYER";
         public const string MainMenuSubtitle =
-            "Host a room or browse sessions by game mode (up to 10 players, Shared Mode).";
+            "Host a room or browse sessions (Client-Server / Dedicated Server, up to 10 players).";
         public const string MainMenuLandingSubtitle =
             "Choose to host a new room or join an existing one.";
         public const string MainMenuGoCreate = "Create room";
         public const string MainMenuGoJoin = "Join room";
         public const string MainMenuBack = "Back";
+        public const string MainMenuReconnect = "Reconnect to last room";
+        public const string MainMenuQuickJoin = "Quick join";
         public const string CreatePageTitle = "CREATE ROOM";
         public const string JoinPageTitle = "JOIN ROOM";
         public const string JoinRoomDropdownLabel = "Available rooms";
         public const string JoinRoomPlaceholder = "Select a room…";
         public const string JoinRoomButton = "Join room";
+        public const string MaxPlayersLabel = "Max players";
+        public const string DifficultyLabel = "Difficulty";
+        public static string JoinRoomFailed(string detail) =>
+            $"Could not join room: {detail}";
+        public const string QuickJoinNoMatch =
+            "No open rooms match the selected mode / map / difficulty.";
+        public static string QuickJoinNoMatchDetail(string filters) =>
+            $"No open rooms match {filters}. On Join room, set the same mode/map/difficulty as the host.";
+        public const string DisconnectNoticePrefix = "Disconnected: ";
+        public const string ReconnectPrompt =
+            "Previous session found. Press Reconnect to restore control.";
+        public const string CareerStatsTitle = "CAREER STATS";
+        public const string CareerStatsEmpty = "No saved matches yet.";
 
         public const string NicknameLabel = "Nickname";
         public const string RoomLabel = "Room name";
@@ -38,7 +53,10 @@ namespace FusionMultiplayer.UI
             "Sessions are listed below but already started — select an open room or create a new one.";
         public const string SessionBrowserOffline =
             "Session browser needs Photon Cloud. Disable Offline Play for multiplayer.";
-        public const string SessionBrowserNoConnection = "ConnectionManager is missing in this scene.";
+        public const string SessionBrowserNoConnection =
+            "ConnectionManager missing — Play from 00_Boot (or open 00_MainMenu).";
+        public const string SessionBrowserLobbyFailed =
+            "Could not join session lobby. Check Photon AppId / network, then press Refresh.";
 
         public const string LobbyTitle = "LOBBY";
         public const string LobbySessionInfoFormat = "Mode: {0}  ·  Map: {1}";
@@ -47,9 +65,10 @@ namespace FusionMultiplayer.UI
         public const string LobbyNotConnected =
             "Not connected. Open scene 00_MainMenu, press Play, then Create or Join.";
         public const string LobbyMasterStatus =
-            "You are the session master. Press START GAME when all players are in the lobby.";
+            "You are the session host/server authority. Press START GAME when ready.";
         public const string LobbyClientStatus =
-            "Waiting for the session master to start the game...";
+            "Waiting for the host/server. You can press START to request a start.";
+        public const string LobbyStartRequested = "Start requested — waiting for server…";
 
         public const string CharacterSelectPrompt =
             "Pick a character slot (0–9). Each slot has its own spawn point.";
@@ -118,5 +137,20 @@ namespace FusionMultiplayer.UI
         public const string CombatHealthFormat = "HP {0}/{1}";
         public const string CombatHealthDead = "DEAD — respawning…";
         public const string GameHudModeFormat = "Mode: {0}";
+        public const string MatchInfoMetaFormat = "{0}  ·  {1}  ·  {2}";
+        public const string MatchInfoKdFormat = "K {0}  D {1}";
+        public const string MatchInfoBotBadge = "BOT";
+        public const string MatchEventCalm = "Event: Calm";
+        public const string MatchEventStorm = "Event: Storm";
+        public const string MatchEventLowGravity = "Event: Low Gravity";
+        public const string MatchEventUnknown = "Event: —";
+
+        public const string PauseTitle = "PAUSED";
+        public const string PauseResume = "Resume";
+        public const string PauseLeave = "Leave to main menu";
+        public const string PauseControls =
+            "WASD move · Mouse look · LMB shoot · E/Q build · Tab scores · Enter chat · Esc pause";
+
+        public const string LobbyLeave = "Leave lobby";
     }
 }

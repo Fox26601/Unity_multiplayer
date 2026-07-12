@@ -5,7 +5,7 @@ using UnityEngine;
 namespace FusionMultiplayer.Player
 {
     /// <summary>
-    /// Per-player lobby/session profile replicated to all peers.
+    /// Per-player lobby/session profile replicated from the server.
     /// </summary>
     public class PlayerData : NetworkBehaviour
     {
@@ -13,23 +13,81 @@ namespace FusionMultiplayer.Player
 
         [Networked] public NetworkString<_32> Nick { get; set; }
         [Networked] public Color Tint { get; set; }
-        /// <summary>Selected character slot in game scene, or -1 if none.</summary>
         [Networked] public int CharacterIndex { get; set; }
-        /// <summary>Combat kills — hidden from HUD, shown on Tab leaderboard and game-over.</summary>
         [Networked] public int Score { get; set; }
         [Networked] public int Deaths { get; set; }
-        /// <summary>End-game map vote option, or <see cref="NoEndGameVote"/>.</summary>
         [Networked] public int EndGameVote { get; set; }
+        [Networked] public NetworkString<_64> ReconnectToken { get; set; }
+        [Networked] public NetworkBool IsBotControlled { get; set; }
 
         public override void Spawned()
         {
-            CharacterIndex = -1;
             if (HasStateAuthority)
             {
-                Nick = SessionData.Nickname;
-                Tint = SessionData.Tint;
+                CharacterIndex = -1;
                 EndGameVote = NoEndGameVote;
+                IsBotControlled = false;
+                if (string.IsNullOrWhiteSpace(Nick.ToString()))
+                {
+                    Nick = "Player";
+                    Tint = Color.white;
+                }
             }
+
+            if (HasInputAuthority)
+            {
+                var token = SessionData.EnsureReconnectToken();
+                RpcSubmitProfile(SessionData.Nickname ?? "Player", SessionData.Tint, token);
+            }
+        }
+
+        public override void FixedUpdateNetwork()
+        {
+            if (!HasInputAuthority || GameManager.Instance == null || !GameManager.Instance.IsNetworkActive)
+                return;
+
+            if (_configSubmitted)
+                return;
+
+            _configSubmitted = true;
+            SubmitMatchConfig();
+        }
+
+        private bool _configSubmitted;
+
+        private void SubmitMatchConfig()
+        {
+            var room = ConnectionManager.Instance != null
+                ? ConnectionManager.Instance.ActiveRoomName
+                : "unknown";
+            var dto = MatchConfigDto.FromSessionData(room);
+            var json = dto.ToJson();
+            if (GameManager.Instance != null)
+                GameManager.Instance.SubmitMatchConfigJson(json);
+        }
+
+        [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+        private void RpcSubmitProfile(NetworkString<_32> nick, Color tint, NetworkString<_64> token)
+        {
+            if (!HasStateAuthority)
+                return;
+
+            Nick = string.IsNullOrWhiteSpace(nick.ToString()) ? "Player" : nick;
+            Tint = tint;
+            ReconnectToken = token;
+            IsBotControlled = false;
+
+            if (GameManager.Instance != null)
+                GameManager.Instance.TryRestoreReconnect(Object.InputAuthority, token.ToString());
+        }
+
+        [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+        public void RpcRequestStartMatch()
+        {
+            if (!HasStateAuthority)
+                return;
+
+            ConnectionManager.Instance?.ServerStartMatch();
         }
 
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]

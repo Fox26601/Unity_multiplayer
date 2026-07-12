@@ -43,6 +43,10 @@ namespace FusionMultiplayer.UI
                 gameObject.AddComponent<LeaderboardUI>();
             if (GetComponent<MatchTimerHud>() == null)
                 gameObject.AddComponent<MatchTimerHud>();
+            if (GetComponent<MatchInfoHud>() == null)
+                gameObject.AddComponent<MatchInfoHud>();
+            if (GetComponent<PauseMenuUI>() == null)
+                gameObject.AddComponent<PauseMenuUI>();
         }
     }
 }

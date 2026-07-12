@@ -13,6 +13,13 @@ This repository **does not ship** the Photon Fusion binaries (license). Gameplay
 2. **Photon Fusion 2** SDK (import the `.unitypackage` from the Photon dashboard).
 3. **Fusion App Id** — paste into `PhotonAppSettings` (created by the Fusion import wizard).
 
+## Topology
+
+- **Editor create:** `GameMode.Host` (Client-Server authority).
+- **Editor/client join:** `GameMode.Client`.
+- **Dedicated process:** `GameMode.Server` via `-dedicated -room=Name`.
+- Opening scene in Build Settings: **`00_Boot`** → Main Menu.
+
 ## Where is the menu / UI?
 
 - **Main menu UI** lives only in **`Assets/_Project/Scenes/00_MainMenu.unity`** (`MainMenuCanvas` + `ConnectionManager`).
@@ -25,7 +32,7 @@ This repository **does not ship** the Photon Fusion binaries (license). Gameplay
 Once after cloning the repo:
 
 1. Menu: **Tools → Fusion Multiplayer → Use Main Menu As Play Mode Start Scene**  
-   (sets Unity’s **Play Mode Start Scene** to `00_MainMenu` so Play always starts from the menu even if you had `02_Game` selected in the editor).
+   Prefer starting from **`00_Boot`** in Build Settings (index 0); or set Play Mode Start Scene to `00_Boot` / `00_MainMenu`.
 2. Optional reset: **Tools → Fusion Multiplayer → Clear Play Mode Start Scene (use active scene)**.
 
 ## One-time project wiring
@@ -60,7 +67,7 @@ Once after cloning the repo:
 
 ## Session flow
 
-1. **Main menu** — nickname, random color, room name; **Create / Host** or **Join** starts a **Shared Mode** session (max **10** players) and loads the **lobby** scene.
+1. **Main menu** — nickname, random color, room name; **Create / Host** or **Join** starts a **Host/Client** session (configurable max players) and loads the **lobby** scene.
 2. **Lobby** — each client spawns **PlayerData** (nick + color). **Scene authority / master** uses **Start Game** to load **02_Game** for everyone.
 3. **Game** — pick a free character slot (0–9). **Master** approves ownership and spawn point; **PlayerAvatar** spawns with **NetworkTransform** sync. **Chat** (optional whisper by **exact nickname**). **Master** ends the game → overlay → **Leave to Main Menu** shuts down Fusion and loads the main menu.
 

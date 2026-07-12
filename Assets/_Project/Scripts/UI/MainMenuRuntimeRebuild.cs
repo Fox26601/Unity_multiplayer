@@ -11,7 +11,7 @@ namespace FusionMultiplayer.UI
     /// </summary>
     public static class MainMenuRuntimeRebuild
     {
-        private const int MenuBuildVersion = 20;
+        private const int MenuBuildVersion = 21;
         private const int MenuCompactText = 26;
         private const float FormLabelWidth = 168f;
         private const float LabelShareOfBlock = 0.32f;
@@ -164,9 +164,13 @@ namespace FusionMultiplayer.UI
             var randomColor = CreateColumnButton(landingPage, "BtnRandomColor", UiCopy.RandomColorButton,
                 0.38f, 0.46f, new Vector2(0.58f, 0.5f));
             var goCreate = CreateColumnButton(landingPage, "BtnGoCreate", UiCopy.MainMenuGoCreate,
-                0.22f, 0.34f, new Vector2(0.5f, 1f), fullWidth: true);
+                0.28f, 0.38f, new Vector2(0.5f, 1f), fullWidth: true);
             var goJoin = CreateColumnButton(landingPage, "BtnGoJoin", UiCopy.MainMenuGoJoin,
-                0.08f, 0.20f, new Vector2(0.5f, 1f), fullWidth: true);
+                0.16f, 0.26f, new Vector2(0.5f, 1f), fullWidth: true);
+            var quickJoin = CreateColumnButton(landingPage, "BtnQuickJoin", UiCopy.MainMenuQuickJoin,
+                0.08f, 0.14f, new Vector2(0.5f, 1f), fullWidth: true);
+            var reconnect = CreateColumnButton(landingPage, "BtnReconnect", UiCopy.MainMenuReconnect,
+                0.01f, 0.07f, new Vector2(0.5f, 1f), fullWidth: true);
 
             // --- Create ---
             var createForm = CreatePageContentRoot(createPage);
@@ -174,6 +178,8 @@ namespace FusionMultiplayer.UI
             CreatePageTitle(createForm, "CreateTitle", UiCopy.CreatePageTitle);
             var createMode = BuildFormDropdownRow(createForm, "CreateGameModeSelector", UiCopy.GameModeLabel);
             var createMap = BuildFormDropdownRow(createForm, "CreateMapSelector", UiCopy.MapFilterLabel);
+            var createDifficulty = BuildFormDropdownRow(createForm, "CreateDifficultySelector", UiCopy.DifficultyLabel);
+            var createMaxPlayers = BuildFormDropdownRow(createForm, "CreateMaxPlayersSelector", UiCopy.MaxPlayersLabel);
             var hiddenToggle = CreateFormToggleRow(createForm, "HiddenSessionToggle", UiCopy.HiddenSessionLabel);
             var modeHint = CreateFormHint(createForm, "ModeHint", string.Empty);
             var room = CreateFormInputRow(createForm, "RoomField", UiCopy.RoomLabel, UiCopy.RoomPlaceholder);
@@ -185,6 +191,7 @@ namespace FusionMultiplayer.UI
             CreatePageTitle(joinForm, "JoinTitle", UiCopy.JoinPageTitle);
             var joinMode = BuildFormDropdownRow(joinForm, "JoinGameModeSelector", UiCopy.GameModeLabel);
             var joinMap = BuildFormDropdownRow(joinForm, "JoinMapSelector", UiCopy.MapFilterLabel);
+            var joinDifficulty = BuildFormDropdownRow(joinForm, "JoinDifficultySelector", UiCopy.DifficultyLabel);
             var (listContent, emptyHint) = CreateSessionListScrollLayout(joinForm);
             var (refresh, joinSession) = CreateJoinActionsRow(joinForm);
 
@@ -215,13 +222,18 @@ namespace FusionMultiplayer.UI
                 browser,
                 createMode,
                 createMap,
+                createDifficulty,
+                createMaxPlayers,
                 hiddenToggle,
                 joinMode,
                 joinMap,
+                joinDifficulty,
                 listContent,
                 refresh,
                 emptyHint,
-                modeHint);
+                modeHint,
+                quickJoin,
+                reconnect);
 
             createPage.gameObject.SetActive(false);
             joinPage.gameObject.SetActive(false);

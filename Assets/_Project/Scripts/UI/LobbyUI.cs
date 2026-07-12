@@ -15,15 +15,18 @@ namespace FusionMultiplayer.UI
     public class LobbyUI : MonoBehaviour
     {
         [SerializeField] private Button _startButton;
+        [SerializeField] private Button _leaveButton;
         [SerializeField] private TMP_Text _playerListText;
         [SerializeField] private TMP_Text _statusText;
         [SerializeField] private TMP_Text _sessionInfoText;
 
         private Text _playerListLegacy;
         private Text _statusLegacy;
+        private bool _leaveInProgress;
 
         /// <summary>Called by LobbyRuntimeRebuild after it creates TMP widgets.</summary>
-        public void BindRuntimeTmp(TMP_Text playerList, TMP_Text status, Button start, TMP_Text sessionInfo)
+        public void BindRuntimeTmp(TMP_Text playerList, TMP_Text status, Button start, TMP_Text sessionInfo,
+            Button leave = null)
         {
             _playerListText = playerList;
             _playerListLegacy = null;
@@ -31,11 +34,8 @@ namespace FusionMultiplayer.UI
             _statusLegacy = null;
             _startButton = start;
             _sessionInfoText = sessionInfo;
-            if (_startButton != null)
-            {
-                _startButton.onClick.RemoveListener(OnStartClicked);
-                _startButton.onClick.AddListener(OnStartClicked);
-            }
+            _leaveButton = leave;
+            WireButtons();
         }
 
         private void Awake()
@@ -45,12 +45,23 @@ namespace FusionMultiplayer.UI
 
             LobbyRuntimeRebuild.EnsureBuilt(transform);
             ResolveRefs();
+            WireButtons();
+            UiTypography.ApplyHierarchy(transform);
+        }
+
+        private void WireButtons()
+        {
             if (_startButton != null)
             {
                 _startButton.onClick.RemoveListener(OnStartClicked);
                 _startButton.onClick.AddListener(OnStartClicked);
             }
-            UiTypography.ApplyHierarchy(transform);
+
+            if (_leaveButton != null)
+            {
+                _leaveButton.onClick.RemoveListener(OnLeaveClicked);
+                _leaveButton.onClick.AddListener(OnLeaveClicked);
+            }
         }
 
         private void ResolveRefs()
@@ -73,6 +84,8 @@ namespace FusionMultiplayer.UI
 
             if (_startButton == null)
                 _startButton = panel.Find("BtnStart")?.GetComponent<Button>();
+            if (_leaveButton == null)
+                _leaveButton = panel.Find("BtnLeave")?.GetComponent<Button>();
         }
 
         private void Start()
@@ -95,20 +108,37 @@ namespace FusionMultiplayer.UI
             if (runner == null || !runner.IsRunning)
             {
                 if (_startButton != null) _startButton.gameObject.SetActive(false);
+                if (_leaveButton != null)
+                {
+                    _leaveButton.gameObject.SetActive(true);
+                    _leaveButton.interactable = !_leaveInProgress;
+                }
+
                 SetStatusText(UiCopy.LobbyNotConnected);
                 SetSessionInfoText(string.Empty);
                 return;
             }
 
             if (_startButton != null)
-                _startButton.gameObject.SetActive(runner.IsSceneAuthority);
+            {
+                // Host/server can start directly; clients request start via RPC (Dedicated Server).
+                _startButton.gameObject.SetActive(true);
+                _startButton.interactable = true;
+            }
+
+            if (_leaveButton != null)
+            {
+                _leaveButton.gameObject.SetActive(true);
+                _leaveButton.interactable = !_leaveInProgress;
+            }
 
             UpdateSessionInfo(runner);
 
             var started = runner.SessionInfo.IsValid && SessionCatalog.IsSessionStarted(runner.SessionInfo);
+            var isAuthority = NetworkAuthority.IsServerOrHost(runner);
             SetStatusText(started
                 ? UiCopy.LobbySessionStarted
-                : runner.IsSceneAuthority
+                : isAuthority
                     ? UiCopy.LobbyMasterStatus
                     : UiCopy.LobbyClientStatus);
 
@@ -120,7 +150,8 @@ namespace FusionMultiplayer.UI
             foreach (var _ in runner.ActivePlayers)
                 playerCount++;
 
-            sb.AppendLine($"Count: {playerCount} / 10");
+            var maxPlayers = runner.SessionInfo.IsValid ? runner.SessionInfo.MaxPlayers : SessionData.MaxPlayers;
+            sb.AppendLine($"Count: {playerCount} / {maxPlayers}");
             sb.AppendLine();
 
             var anyListed = false;
@@ -190,15 +221,46 @@ namespace FusionMultiplayer.UI
         private void OnStartClicked()
         {
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
-            if (runner == null || !runner.IsRunning || !runner.IsSceneAuthority) return;
+            if (runner == null || !runner.IsRunning)
+                return;
 
-            SessionLock.TryLockForGameStart(runner);
+            if (NetworkAuthority.IsServerOrHost(runner))
+            {
+                ConnectionManager.Instance.ServerStartMatch();
+                return;
+            }
 
-            var map = SessionCatalog.MapKind.Arena;
-            if (runner.SessionInfo.IsValid && SessionCatalog.TryGetMap(runner.SessionInfo, out var sessionMap))
-                map = sessionMap;
+            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            {
+                if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
+                {
+                    pd.RpcRequestStartMatch();
+                    SetStatusText(UiCopy.LobbyStartRequested);
+                    return;
+                }
+            }
+        }
 
-            runner.LoadScene(SceneRef.FromIndex(SessionCatalog.GetSceneBuildIndex(map)));
+        private async void OnLeaveClicked()
+        {
+            if (_leaveInProgress)
+                return;
+
+            _leaveInProgress = true;
+            if (_leaveButton != null)
+                _leaveButton.interactable = false;
+            if (_startButton != null)
+                _startButton.interactable = false;
+
+            try
+            {
+                if (ConnectionManager.Instance != null)
+                    await ConnectionManager.Instance.ShutdownToMainMenuAsync();
+            }
+            finally
+            {
+                _leaveInProgress = false;
+            }
         }
     }
 }

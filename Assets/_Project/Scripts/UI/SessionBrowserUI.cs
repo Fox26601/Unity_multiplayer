@@ -15,9 +15,12 @@ namespace FusionMultiplayer.UI
     {
         [SerializeField] private StringDropdownSelector _createGameModeSelector;
         [SerializeField] private StringDropdownSelector _createMapSelector;
+        [SerializeField] private StringDropdownSelector _createDifficultySelector;
+        [SerializeField] private StringDropdownSelector _createMaxPlayersSelector;
         [SerializeField] private Toggle _hiddenToggle;
         [SerializeField] private StringDropdownSelector _joinGameModeSelector;
         [SerializeField] private StringDropdownSelector _joinMapSelector;
+        [SerializeField] private StringDropdownSelector _joinDifficultySelector;
         [SerializeField] private Transform _listContent;
         [SerializeField] private Button _refreshButton;
         [SerializeField] private Button _joinSelectedButton;
@@ -33,6 +36,8 @@ namespace FusionMultiplayer.UI
         private bool _wired;
         private bool _joinInProgress;
         private bool _joinPageActive;
+        private float _nextDynamicRefresh;
+        private bool _refreshInFlight;
 
         public event Action<string> JoinRequested;
 
@@ -49,9 +54,12 @@ namespace FusionMultiplayer.UI
         internal void BindRuntime(
             StringDropdownSelector createGameMode,
             StringDropdownSelector createMap,
+            StringDropdownSelector createDifficulty,
+            StringDropdownSelector createMaxPlayers,
             Toggle hiddenToggle,
             StringDropdownSelector joinGameMode,
             StringDropdownSelector joinMap,
+            StringDropdownSelector joinDifficulty,
             Transform listContent,
             Button refresh,
             Button joinSelected,
@@ -60,9 +68,12 @@ namespace FusionMultiplayer.UI
         {
             _createGameModeSelector = createGameMode;
             _createMapSelector = createMap;
+            _createDifficultySelector = createDifficulty;
+            _createMaxPlayersSelector = createMaxPlayers;
             _hiddenToggle = hiddenToggle;
             _joinGameModeSelector = joinGameMode;
             _joinMapSelector = joinMap;
+            _joinDifficultySelector = joinDifficulty;
             _listContent = listContent;
             _refreshButton = refresh;
             _joinSelectedButton = joinSelected;
@@ -111,6 +122,24 @@ namespace FusionMultiplayer.UI
             _joinGameModeSelector.SelectionChanged += OnGameModeChanged;
             _joinMapSelector.SelectionChanged += OnJoinMapChanged;
 
+            if (_createDifficultySelector != null)
+            {
+                _createDifficultySelector.SelectionChanged -= OnDifficultyChanged;
+                _createDifficultySelector.SelectionChanged += OnDifficultyChanged;
+            }
+
+            if (_joinDifficultySelector != null)
+            {
+                _joinDifficultySelector.SelectionChanged -= OnDifficultyChanged;
+                _joinDifficultySelector.SelectionChanged += OnDifficultyChanged;
+            }
+
+            if (_createMaxPlayersSelector != null)
+            {
+                _createMaxPlayersSelector.SelectionChanged -= OnMaxPlayersChanged;
+                _createMaxPlayersSelector.SelectionChanged += OnMaxPlayersChanged;
+            }
+
             if (_hiddenToggle != null)
             {
                 _hiddenToggle.onValueChanged.RemoveListener(OnHiddenChanged);
@@ -136,6 +165,8 @@ namespace FusionMultiplayer.UI
         {
             var modeLabels = GetModeLabels();
             var mapLabels = GetMapLabels();
+            var difficultyLabels = GetDifficultyLabels();
+            var maxPlayerLabels = GetMaxPlayerLabels();
 
             var modeIndex = Array.IndexOf(SessionCatalog.AllGameModes, SessionData.SelectedGameMode);
             if (modeIndex < 0) modeIndex = 0;
@@ -147,10 +178,19 @@ namespace FusionMultiplayer.UI
                 if (mapIndex < 1) mapIndex = 1;
             }
 
+            var diffIndex = Array.IndexOf(SessionCatalog.AllDifficulties, SessionData.SelectedDifficulty);
+            if (diffIndex < 0) diffIndex = 1;
+
+            var maxIndex = Mathf.Clamp(SessionData.MaxPlayers - SessionData.MinPlayers, 0,
+                SessionData.MaxPlayersCap - SessionData.MinPlayers);
+
             _createGameModeSelector?.SetOptions(modeLabels, modeIndex);
             _createMapSelector?.SetOptions(mapLabels, mapIndex);
+            _createDifficultySelector?.SetOptions(difficultyLabels, diffIndex);
+            _createMaxPlayersSelector?.SetOptions(maxPlayerLabels, maxIndex);
             _joinGameModeSelector?.SetOptions(modeLabels, modeIndex);
             _joinMapSelector?.SetOptions(mapLabels, mapIndex);
+            _joinDifficultySelector?.SetOptions(difficultyLabels, diffIndex);
 
             if (_hiddenToggle != null)
                 _hiddenToggle.isOn = SessionData.HiddenSession;
@@ -177,6 +217,33 @@ namespace FusionMultiplayer.UI
                     ? ConnectionManager.Instance.CachedSessionList
                     : Array.Empty<SessionInfo>());
             }
+
+            // Dynamic matchmaking: keep the lobby list fresh while browsing.
+            if (Time.unscaledTime >= _nextDynamicRefresh)
+            {
+                _nextDynamicRefresh = Time.unscaledTime + 4f;
+                if (!_refreshInFlight)
+                    _ = RefreshLobbyAsync();
+            }
+        }
+
+        private void OnDifficultyChanged(int index, string label)
+        {
+            if (index < 0 || index >= SessionCatalog.AllDifficulties.Length)
+                return;
+
+            SessionData.SelectedDifficulty = SessionCatalog.AllDifficulties[index];
+            _createDifficultySelector?.SetOptions(GetDifficultyLabels(), index);
+            _joinDifficultySelector?.SetOptions(GetDifficultyLabels(), index);
+            if (_joinPageActive)
+                RebuildList(ConnectionManager.Instance != null
+                    ? ConnectionManager.Instance.CachedSessionList
+                    : Array.Empty<SessionInfo>());
+        }
+
+        private void OnMaxPlayersChanged(int index, string label)
+        {
+            SessionData.MaxPlayers = SessionData.ClampMaxPlayers(SessionData.MinPlayers + index);
         }
 
         private void OnGameModeChanged(int index, string label)
@@ -243,6 +310,22 @@ namespace FusionMultiplayer.UI
             return labels;
         }
 
+        private static List<string> GetDifficultyLabels()
+        {
+            var labels = new List<string>();
+            foreach (var d in SessionCatalog.AllDifficulties)
+                labels.Add(SessionCatalog.GetDifficultyLabel(d));
+            return labels;
+        }
+
+        private static List<string> GetMaxPlayerLabels()
+        {
+            var labels = new List<string>();
+            for (var i = SessionData.MinPlayers; i <= SessionData.MaxPlayersCap; i++)
+                labels.Add(i.ToString());
+            return labels;
+        }
+
         private void OnHiddenChanged(bool value)
         {
             SessionData.HiddenSession = value;
@@ -264,7 +347,7 @@ namespace FusionMultiplayer.UI
 
         private async Task RefreshLobbyAsync()
         {
-            if (!_joinPageActive)
+            if (!_joinPageActive || _refreshInFlight)
                 return;
 
             if (ConnectionManager.Instance == null)
@@ -281,8 +364,27 @@ namespace FusionMultiplayer.UI
                 return;
             }
 
+            _refreshInFlight = true;
             SetEmptyHint(UiCopy.SessionBrowserLoading);
-            await ConnectionManager.Instance.RefreshSessionLobbyAsync(SessionData.SelectedGameMode);
+            try
+            {
+                var ok = await ConnectionManager.Instance.RefreshSessionLobbyAsync(SessionData.SelectedGameMode);
+                if (!_joinPageActive)
+                    return;
+
+                if (!ok)
+                {
+                    SetEmptyHint(UiCopy.SessionBrowserLobbyFailed);
+                    RebuildList(Array.Empty<SessionInfo>());
+                    return;
+                }
+
+                RebuildList(ConnectionManager.Instance.CachedSessionList);
+            }
+            finally
+            {
+                _refreshInFlight = false;
+            }
         }
 
         private void OnSessionListUpdated(IReadOnlyList<SessionInfo> sessions)
@@ -305,7 +407,7 @@ namespace FusionMultiplayer.UI
             {
                 foreach (var session in sessions)
                 {
-                    if (!session.IsValid || !PassesMapFilter(session))
+                    if (!session.IsValid || !PassesMapFilter(session) || !PassesDifficultyFilter(session))
                         continue;
 
                     var started = SessionCatalog.IsSessionStarted(session);
@@ -412,6 +514,13 @@ namespace FusionMultiplayer.UI
             if (SessionData.SelectedMap == SessionCatalog.MapKind.Any || _mapFilterExpired)
                 return true;
             return SessionCatalog.TryGetMap(session, out var map) && map == SessionData.SelectedMap;
+        }
+
+        private static bool PassesDifficultyFilter(SessionInfo session)
+        {
+            if (!SessionCatalog.TryGetDifficulty(session, out var difficulty))
+                return true;
+            return difficulty == SessionData.SelectedDifficulty;
         }
 
         private void UpdateJoinButton()

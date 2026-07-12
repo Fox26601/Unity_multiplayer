@@ -214,8 +214,14 @@ namespace FusionMultiplayer.Player
             if (SessionRuntime.AllowsBreakAnyBlock)
                 return blockObject.InputAuthority != Object.InputAuthority;
 
-            // Build: host-placed blocks cannot be removed by others (Assignment 1).
-            var hostPlayer = Runner.GetMasterClient();
+            // Build: session-host blocks cannot be removed by others.
+            var hostPlayer = PlayerRef.None;
+            foreach (var p in Runner.ActivePlayers)
+            {
+                hostPlayer = p;
+                break;
+            }
+
             return blockObject.InputAuthority != hostPlayer;
         }
 

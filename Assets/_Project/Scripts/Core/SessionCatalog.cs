@@ -3,12 +3,13 @@ using Fusion;
 
 namespace FusionMultiplayer.Core
 {
-    /// <summary>Assignment 3 session metadata: game modes, maps, and Photon custom properties.</summary>
+    /// <summary>Session metadata: game modes, maps, difficulty, and Photon custom properties.</summary>
     public static class SessionCatalog
     {
         public const string PropGameMode = "gm";
         public const string PropMap = "map";
         public const string PropPhase = "phase";
+        public const string PropDifficulty = "diff";
 
         public const float MapFilterTimeoutSeconds = 8f;
 
@@ -27,6 +28,13 @@ namespace FusionMultiplayer.Core
             Ruins = 2
         }
 
+        public enum DifficultyKind
+        {
+            Easy = 0,
+            Normal = 1,
+            Hard = 2
+        }
+
         public enum SessionPhase
         {
             Lobby = 0,
@@ -38,6 +46,9 @@ namespace FusionMultiplayer.Core
 
         public static readonly MapKind[] SelectableMaps =
             { MapKind.Arena, MapKind.Plaza, MapKind.Ruins };
+
+        public static readonly DifficultyKind[] AllDifficulties =
+            { DifficultyKind.Easy, DifficultyKind.Normal, DifficultyKind.Hard };
 
         public static string LobbyNameForMode(GameModeKind mode) => $"FM_{mode}";
 
@@ -58,6 +69,14 @@ namespace FusionMultiplayer.Core
             _ => map.ToString()
         };
 
+        public static string GetDifficultyLabel(DifficultyKind difficulty) => difficulty switch
+        {
+            DifficultyKind.Easy => "Easy",
+            DifficultyKind.Normal => "Normal",
+            DifficultyKind.Hard => "Hard",
+            _ => difficulty.ToString()
+        };
+
         public static string GetModeDescription(GameModeKind mode) => mode switch
         {
             GameModeKind.Build => "Place and remove blocks (E / Q). No weapons.",
@@ -74,19 +93,27 @@ namespace FusionMultiplayer.Core
             _ => string.Empty
         };
 
+        public static float GetDamageMultiplier(DifficultyKind difficulty) => difficulty switch
+        {
+            DifficultyKind.Easy => 0.75f,
+            DifficultyKind.Hard => 1.35f,
+            _ => 1f
+        };
+
         public static MapKind ResolveMapForHost(MapKind selected) =>
             selected == MapKind.Any ? MapKind.Arena : selected;
 
         public static int GetSceneBuildIndex(MapKind map) => SceneIndices.GetBuildIndex(map);
 
         public static Dictionary<string, SessionProperty> BuildProperties(GameModeKind mode, MapKind map,
-            SessionPhase phase)
+            SessionPhase phase, DifficultyKind difficulty = DifficultyKind.Normal)
         {
             return new Dictionary<string, SessionProperty>
             {
                 { PropGameMode, (int)mode },
                 { PropMap, (int)map },
-                { PropPhase, (int)phase }
+                { PropPhase, (int)phase },
+                { PropDifficulty, (int)difficulty }
             };
         }
 
@@ -112,6 +139,17 @@ namespace FusionMultiplayer.Core
             return true;
         }
 
+        public static bool TryGetDifficulty(SessionInfo info, out DifficultyKind difficulty)
+        {
+            difficulty = DifficultyKind.Normal;
+            if (!TryGetIntProperty(info, PropDifficulty, out var raw))
+                return false;
+            if (raw < 0 || raw > (int)DifficultyKind.Hard)
+                return false;
+            difficulty = (DifficultyKind)raw;
+            return true;
+        }
+
         public static bool TryGetPhase(SessionInfo info, out SessionPhase phase)
         {
             phase = SessionPhase.Lobby;
@@ -132,6 +170,24 @@ namespace FusionMultiplayer.Core
             return TryGetPhase(info, out var phase) && phase == SessionPhase.Started;
         }
 
+        public static bool MatchesFilters(SessionInfo info, GameModeKind mode, MapKind map,
+            DifficultyKind difficulty, bool requireOpen)
+        {
+            if (!info.IsValid)
+                return false;
+            if (requireOpen && (!info.IsOpen || IsSessionStarted(info)))
+                return false;
+            if (info.PlayerCount >= info.MaxPlayers)
+                return false;
+            if (!TryGetGameMode(info, out var gm) || gm != mode)
+                return false;
+            if (map != MapKind.Any && (!TryGetMap(info, out var mp) || mp != map))
+                return false;
+            if (!TryGetDifficulty(info, out var diff) || diff != difficulty)
+                return false;
+            return true;
+        }
+
         public static string FormatSessionRow(SessionInfo info)
         {
             if (!info.IsValid)
@@ -139,9 +195,10 @@ namespace FusionMultiplayer.Core
 
             var mode = TryGetGameMode(info, out var gm) ? GetModeLabel(gm) : "?";
             var map = TryGetMap(info, out var mp) ? GetMapLabel(mp) : "?";
+            var diff = TryGetDifficulty(info, out var d) ? GetDifficultyLabel(d) : "?";
             var started = IsSessionStarted(info) ? " · STARTED" : string.Empty;
             var hidden = info.IsVisible ? string.Empty : " · HIDDEN";
-            return $"{info.Name}  ({mode} / {map})  {info.PlayerCount}/{info.MaxPlayers}{started}{hidden}";
+            return $"{info.Name}  ({mode} / {map} / {diff})  {info.PlayerCount}/{info.MaxPlayers}{started}{hidden}";
         }
 
         private static bool TryGetIntProperty(SessionInfo info, string key, out int value)
