@@ -25,6 +25,13 @@ namespace FusionMultiplayer.Player
         private bool _spawned;
         private PlayerRef _shooterRef;
 
+        /// <summary>Optional pre-spawn hook so bots can attribute shots after InputAuthority is cleared.</summary>
+        public void ConfigureShooter(PlayerRef shooter)
+        {
+            Shooter = shooter;
+            _shooterRef = shooter;
+        }
+
         private void Awake()
         {
             _collider = GetComponent<SphereCollider>();
@@ -34,8 +41,13 @@ namespace FusionMultiplayer.Player
         public override void Spawned()
         {
             _spawned = true;
-            _shooterRef = Object.InputAuthority;
-            Shooter = _shooterRef;
+            if (Shooter != PlayerRef.None)
+                _shooterRef = Shooter;
+            else
+            {
+                _shooterRef = Object.InputAuthority;
+                Shooter = _shooterRef;
+            }
             _velocity = transform.forward * Speed;
             _lifetime = TickTimer.CreateFromSeconds(Runner, LifetimeSeconds);
             IgnoreShooterCollisions();
@@ -117,7 +129,7 @@ namespace FusionMultiplayer.Player
 
             var avatar = col.GetComponentInParent<PlayerAvatar>();
             if (avatar != null && avatar.Object != null && avatar.Object.IsValid &&
-                avatar.Object.InputAuthority == _shooterRef)
+                PlayerOwnership.ResolveLogicalOwner(avatar) == _shooterRef)
                 return false;
 
             return true;
@@ -145,7 +157,7 @@ namespace FusionMultiplayer.Player
                     return;
                 }
 
-                var victimRef = victim.Object.InputAuthority;
+                var victimRef = PlayerOwnership.ResolveLogicalOwner(victim);
                 if (victimRef != PlayerRef.None && victimRef != _shooterRef)
                 {
                     RegisterHit(victim, victimRef);
@@ -209,7 +221,7 @@ namespace FusionMultiplayer.Player
                 if (avatar.Object == null || !avatar.Object.IsValid)
                     continue;
 
-                if (avatar.Object.InputAuthority != _shooterRef)
+                if (PlayerOwnership.ResolveLogicalOwner(avatar) != _shooterRef)
                     continue;
 
                 foreach (var col in avatar.GetComponentsInChildren<Collider>(true))

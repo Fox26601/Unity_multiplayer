@@ -15,19 +15,14 @@ namespace FusionMultiplayer.Core
             if (runner == null || !NetworkAuthority.IsServerOrHost(runner) || player == PlayerRef.None)
                 return;
 
-            PlayerAvatar avatar = null;
-            foreach (var candidate in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            // Fusion clears InputAuthority before/during OnPlayerLeft — resolve via character slot.
+            var avatar = PlayerOwnership.FindAvatar(player);
+            if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
             {
-                if (candidate.Object != null && candidate.Object.IsValid &&
-                    candidate.Object.InputAuthority == player)
-                {
-                    avatar = candidate;
-                    break;
-                }
-            }
-
-            if (avatar == null)
+                Debug.LogWarning(
+                    $"[FusionMultiplayer] Bot takeover skipped — no avatar for disconnected player {player.PlayerId}");
                 return;
+            }
 
             var brain = avatar.GetComponent<BotBrain>();
             if (brain == null)
@@ -35,20 +30,23 @@ namespace FusionMultiplayer.Core
 
             brain.Activate(player);
 
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            var pd = PlayerOwnership.FindPlayerData(player, avatar.CharacterSlot);
+            if (pd != null && pd.HasStateAuthority)
             {
-                if (pd.Object == null || !pd.Object.IsValid || pd.Object.InputAuthority != player)
-                    continue;
+                pd.IsBotControlled = true;
+                var nick = pd.Nick.ToString();
+                if (!nick.StartsWith("BOT "))
+                    pd.Nick = "BOT " + nick;
+            }
 
-                if (pd.HasStateAuthority)
-                {
-                    pd.IsBotControlled = true;
-                    var nick = pd.Nick.ToString();
-                    if (!nick.StartsWith("BOT "))
-                        pd.Nick = "BOT " + nick;
-                }
-
-                break;
+            if (avatar.HasStateAuthority)
+            {
+                var label = pd != null ? pd.Nick.ToString() : avatar.DisplayName.ToString();
+                if (string.IsNullOrWhiteSpace(label))
+                    label = $"Player {player.PlayerId}";
+                if (!label.StartsWith("BOT "))
+                    label = "BOT " + label;
+                avatar.DisplayName = label;
             }
 
             Debug.Log($"[FusionMultiplayer] Bot takeover for disconnected player {player.PlayerId}");

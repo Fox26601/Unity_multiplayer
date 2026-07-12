@@ -119,7 +119,7 @@ namespace FusionMultiplayer.Player
             if (!SessionRuntime.AllowsShoot)
                 return;
 
-            var victimRef = Object.InputAuthority;
+            var victimRef = PlayerOwnership.ResolveLogicalOwner(this);
             if (attacker == PlayerRef.None || victimRef == PlayerRef.None || attacker == victimRef)
                 return;
 
@@ -163,7 +163,7 @@ namespace FusionMultiplayer.Player
             _respawnTimer = TickTimer.CreateFromSeconds(Runner, RespawnDelaySeconds);
             SetCorpseVisible(false);
 
-            var victimRef = Object.InputAuthority;
+            var victimRef = PlayerOwnership.ResolveLogicalOwner(this);
             if (victimRef != PlayerRef.None)
                 IncrementPlayerDeaths(victimRef);
 
@@ -227,51 +227,37 @@ namespace FusionMultiplayer.Player
 
         private static void IncrementPlayerScore(PlayerRef player)
         {
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-
-                if (pd.Object.InputAuthority != player)
-                    continue;
-
-                if (pd.HasStateAuthority)
-                    pd.Score++;
-                else
-                    pd.RpcAwardScore(1, player);
+            var pd = PlayerOwnership.FindPlayerData(player);
+            if (pd == null)
                 return;
-            }
+
+            if (pd.HasStateAuthority)
+                pd.Score++;
+            else
+                pd.RpcAwardScore(1, player);
         }
 
         private static void IncrementPlayerDeaths(PlayerRef player)
         {
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-
-                if (pd.Object.InputAuthority != player)
-                    continue;
-
-                if (pd.HasStateAuthority)
-                    pd.Deaths++;
-                else
-                    pd.RpcRegisterDeath(1, player);
+            var pd = PlayerOwnership.FindPlayerData(player);
+            if (pd == null)
                 return;
-            }
+
+            if (pd.HasStateAuthority)
+                pd.Deaths++;
+            else
+                pd.RpcRegisterDeath(1, player);
         }
 
         private void PushFromLocalPlayerData()
         {
-            var owner = Object.InputAuthority;
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid) continue;
-                if (pd.Object.InputAuthority != owner) continue;
-                VisualTint = pd.Tint;
-                DisplayName = pd.Nick;
+            var owner = PlayerOwnership.ResolveLogicalOwner(this);
+            var pd = PlayerOwnership.FindPlayerData(owner, CharacterSlot);
+            if (pd == null)
                 return;
-            }
+
+            VisualTint = pd.Tint;
+            DisplayName = pd.Nick;
         }
 
         public override void Render()

@@ -448,7 +448,9 @@ namespace FusionMultiplayer.Core
 
                 var oldOwner = pd.Object.InputAuthority;
                 // Prefer avatar still owned by previous ref; also scan bots by character slot.
-                var avatar = FindAvatarFor(oldOwner) ?? FindAvatarBySlot(pd.CharacterIndex);
+                var avatar = PlayerOwnership.FindAvatar(oldOwner) ??
+                             PlayerOwnership.FindAvatar(player) ??
+                             FindAvatarBySlot(pd.CharacterIndex);
                 if (avatar != null && avatar.Object != null && avatar.Object.IsValid)
                 {
                     avatar.Object.AssignInputAuthority(player);

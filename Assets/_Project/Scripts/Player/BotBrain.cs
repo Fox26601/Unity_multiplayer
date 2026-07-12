@@ -136,7 +136,7 @@ namespace FusionMultiplayer.Player
             {
                 if (other == _avatar || other.Object == null || !other.Object.IsValid || !other.IsAlive)
                     continue;
-                if (other.Object.InputAuthority == _originalOwner)
+                if (PlayerOwnership.ResolveLogicalOwner(other) == _originalOwner)
                     continue;
 
                 var sq = (other.transform.position - transform.position).sqrMagnitude;

@@ -82,7 +82,23 @@ namespace FusionMultiplayer.Player
             if (!TryGetMuzzlePose(out var position, out var rotation))
                 return;
 
-            Runner.Spawn(_projectilePrefab, position, rotation, Object.InputAuthority);
+            var shooter = Object.InputAuthority;
+            if (shooter == PlayerRef.None && avatar != null)
+                shooter = PlayerOwnership.ResolveLogicalOwner(avatar);
+
+            Runner.Spawn(
+                _projectilePrefab,
+                position,
+                rotation,
+                shooter != PlayerRef.None ? shooter : null,
+                onBeforeSpawned: (_, obj) =>
+                {
+                    if (shooter == PlayerRef.None)
+                        return;
+                    var projectile = obj.GetComponent<Projectile>();
+                    if (projectile != null)
+                        projectile.ConfigureShooter(shooter);
+                });
             _fireCooldown = TickTimer.CreateFromSeconds(Runner, FireCooldownSeconds);
             GetComponent<PlayerAnimationSync>()?.PulseShoot();
         }

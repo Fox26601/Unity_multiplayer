@@ -33,8 +33,9 @@
 ## E — Disconnect + bot takeover
 
 1. Mid-match: quit Client B abruptly.
-2. Server keeps B’s avatar; nick becomes `BOT …`; bot patrols/seeks/shoots.
-3. Local disconnect shows status via `SessionFlowUI` (`Disconnected: …`).
+2. Server keeps B’s avatar via character-slot ownership (Fusion clears `InputAuthority` on leave — lookup must not rely on it alone).
+3. Nick becomes `BOT …`; `IsBotControlled` badge; bot patrols/seeks/shoots and can deal/take damage.
+4. Local disconnect shows status via `SessionFlowUI` (`Disconnected: …`).
 
 ## F — Crash reconnect
 

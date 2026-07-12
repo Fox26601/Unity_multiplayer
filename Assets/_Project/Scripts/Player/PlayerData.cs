@@ -93,7 +93,7 @@ namespace FusionMultiplayer.Player
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         public void RpcAwardScore(int amount, PlayerRef expectedOwner)
         {
-            if (amount <= 0 || expectedOwner != Object.InputAuthority)
+            if (amount <= 0 || !OwnsLogicalPlayer(expectedOwner))
                 return;
 
             Score += amount;
@@ -102,7 +102,7 @@ namespace FusionMultiplayer.Player
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         public void RpcRegisterDeath(int amount, PlayerRef expectedOwner)
         {
-            if (amount <= 0 || expectedOwner != Object.InputAuthority)
+            if (amount <= 0 || !OwnsLogicalPlayer(expectedOwner))
                 return;
 
             Deaths += amount;
@@ -127,7 +127,7 @@ namespace FusionMultiplayer.Player
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         public void RpcResetMatchStats(PlayerRef expectedOwner)
         {
-            if (!HasStateAuthority || expectedOwner != Object.InputAuthority)
+            if (!HasStateAuthority || !OwnsLogicalPlayer(expectedOwner))
                 return;
 
             Score = 0;
@@ -139,10 +139,29 @@ namespace FusionMultiplayer.Player
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         public void RpcClearEndGameVote(PlayerRef expectedOwner)
         {
-            if (!HasStateAuthority || expectedOwner != Object.InputAuthority)
+            if (!HasStateAuthority || !OwnsLogicalPlayer(expectedOwner))
                 return;
 
             EndGameVote = NoEndGameVote;
+        }
+
+        private bool OwnsLogicalPlayer(PlayerRef expectedOwner)
+        {
+            if (expectedOwner == PlayerRef.None || Object == null || !Object.IsValid)
+                return false;
+
+            if (Object.InputAuthority == expectedOwner)
+                return true;
+
+            // After disconnect InputAuthority is cleared; slot ownership still maps to the left player.
+            if (Object.InputAuthority != PlayerRef.None)
+                return false;
+
+            var gm = GameManager.Instance;
+            return gm != null &&
+                   CharacterIndex >= 0 &&
+                   CharacterIndex < 10 &&
+                   gm.GetCharacterOwner(CharacterIndex) == expectedOwner;
         }
     }
 }
