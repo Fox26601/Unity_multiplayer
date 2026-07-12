@@ -35,10 +35,16 @@
 1. Mid-match: quit Client B abruptly.
 2. Server keeps B’s avatar via character-slot ownership (Fusion clears `InputAuthority` on leave — lookup must not rely on it alone).
 3. Nick becomes `BOT …`; `IsBotControlled` badge.
-4. Bot AI: **Patrol** → sees player with LOS → **Chase** / **Combat** (aims + shoots only with LOS); lose LOS → **Search** at last seen → timeout → **Patrol**. Whisker steering around walls/build blocks; stuck recovery picks a new patrol point.
-5. Local disconnect shows status via `SessionFlowUI` (`Disconnected: …`).
+4. Bot AI runs in Fusion `FixedUpdateNetwork` via `PlayerMovement` (no NavMesh): **Patrol** → LOS → **Chase** / **Combat**; lose LOS → **Search** → **Patrol**. Whisker steering; auto-jump onto ~1-block ledges (apex 1.5 m); stuck recovery.
+5. Newly placed build blocks are normal Physics colliders — bot/player can walk/jump on them immediately.
+6. Local disconnect shows status via `SessionFlowUI` (`Disconnected: …`).
 
-Manual checks: stand behind a corner (bot stops firing, searches/patrols); step into LOS (chase + shots at you); wall of blocks (bot steers around, does not stuck forever).
+Manual checks: bot patrols across the map after disconnect; stand behind a corner (stops firing); step into LOS (chase + shots); place a block in front (auto-jump or steer around, then walk on top).
+
+## E2 — Jump
+
+1. In gameplay, press **Space** — jump apex ~1.5 m (clear a single 1.0 tile block).
+2. Bot facing a 1-block ledge auto-jumps; taller walls are steered around.
 
 ## F — Crash reconnect
 

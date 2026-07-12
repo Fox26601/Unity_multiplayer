@@ -17,5 +17,6 @@ namespace FusionMultiplayer.Player
         public const int Place = 1;
         public const int Remove = 2;
         public const int Fire = 4;
+        public const int Jump = 8;
     }
 }

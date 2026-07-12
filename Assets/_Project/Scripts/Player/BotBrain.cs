@@ -5,7 +5,8 @@ using UnityEngine;
 namespace FusionMultiplayer.Player
 {
     /// <summary>
-    /// Server-side bot: Patrol → Chase → Combat → Search with LOS, memory, and whisker steering.
+    /// Server-side bot: Patrol → Chase → Combat → Search with LOS, memory, whisker steering, auto-jump.
+    /// Movement is applied in Fusion FixedUpdateNetwork via <see cref="PlayerMovement"/>.
     /// </summary>
     public sealed class BotBrain : MonoBehaviour
     {
@@ -35,6 +36,8 @@ namespace FusionMultiplayer.Player
         [SerializeField] private float _steerProbeRadius = 0.28f;
         [SerializeField] private float _stuckSeconds = 1.1f;
         [SerializeField] private float _stuckMoveEpsilon = 0.08f;
+        [SerializeField] private float _climbProbeDistance = 0.55f;
+        [SerializeField] private float _maxAutoJumpLedge = 1.15f;
 
         private static readonly float[] WhiskerAngles = { 0f, -28f, 28f, -55f, 55f, -85f, 85f };
 
@@ -42,6 +45,7 @@ namespace FusionMultiplayer.Player
         private CharacterController _cc;
         private PlayerLook _look;
         private PlayerWeapon _weapon;
+        private PlayerMovement _movement;
         private Collider[] _ownColliders;
         private readonly RaycastHit[] _hits = new RaycastHit[8];
 
@@ -69,6 +73,7 @@ namespace FusionMultiplayer.Player
             _cc = GetComponent<CharacterController>();
             _look = GetComponent<PlayerLook>();
             _weapon = GetComponent<PlayerWeapon>();
+            _movement = GetComponent<PlayerMovement>();
             _ownColliders = GetComponentsInChildren<Collider>(true);
             _active = true;
             _wasDead = _avatar != null && _avatar.IsDead;
@@ -76,6 +81,9 @@ namespace FusionMultiplayer.Player
             PickPatrolTarget();
             _lastPosSample = transform.position;
             _stuckSince = -1f;
+
+            if (_cc != null && _avatar != null && _avatar.IsAlive && !_cc.enabled)
+                _cc.enabled = true;
         }
 
         public void Deactivate()
@@ -93,14 +101,19 @@ namespace FusionMultiplayer.Player
             _nextFireTime = 0f;
         }
 
-        private void Update()
+        /// <summary>Called from <see cref="PlayerMovement.FixedUpdateNetwork"/> on StateAuthority.</summary>
+        public void SimulationTick(PlayerMovement motor)
         {
-            if (!_active || _avatar == null || !_avatar.HasStateAuthority)
+            if (!_active || _avatar == null || motor == null)
+                return;
+
+            if (!_avatar.HasStateAuthority)
                 return;
 
             if (_avatar.IsDead)
             {
                 _wasDead = true;
+                motor.SetBotMove(Vector3.zero, false);
                 return;
             }
 
@@ -109,17 +122,27 @@ namespace FusionMultiplayer.Player
                 _wasDead = false;
                 ResetMemory();
                 PickPatrolTarget();
+                if (_cc != null && !_cc.enabled)
+                    _cc.enabled = true;
             }
 
-            if (Time.time >= _nextThinkTime)
+            var now = Time.time;
+            if (now >= _nextThinkTime)
             {
-                _nextThinkTime = Time.time + _thinkInterval;
+                _nextThinkTime = now + _thinkInterval;
                 Think();
             }
 
-            TickMove();
+            var horizontal = ComputeHorizontalVelocity();
+            var wantJump = ShouldAutoJump(horizontal);
+            if (UpdateStuckTracker(out var recoveryHorizontal, out var recoveryJump))
+            {
+                horizontal = recoveryHorizontal;
+                wantJump = wantJump || recoveryJump;
+            }
+
+            motor.SetBotMove(horizontal, wantJump);
             TickAimAndFire();
-            TrackStuck();
         }
 
         private void Think()
@@ -132,7 +155,7 @@ namespace FusionMultiplayer.Player
 
                 _state = dist <= _combatRange ? BotState.Combat : BotState.Chase;
 
-                if ((transform.position - _patrolTarget).sqrMagnitude < 2f)
+                if ((FlatPos(transform.position) - FlatPos(_patrolTarget)).sqrMagnitude < 2f)
                     PickPatrolTarget();
                 return;
             }
@@ -154,15 +177,12 @@ namespace FusionMultiplayer.Player
             _target = null;
             _lostSightUntil = 0f;
             _state = BotState.Patrol;
-            if ((transform.position - _patrolTarget).sqrMagnitude < 2.5f)
+            if ((FlatPos(transform.position) - FlatPos(_patrolTarget)).sqrMagnitude < 2.5f)
                 PickPatrolTarget();
         }
 
-        private void TickMove()
+        private Vector3 ComputeHorizontalVelocity()
         {
-            if (_cc == null || !_cc.enabled)
-                return;
-
             Vector3 goal;
             float speed;
             var strafe = Vector3.zero;
@@ -174,7 +194,7 @@ namespace FusionMultiplayer.Player
                     speed = _chaseSpeed;
                     break;
                 case BotState.Combat:
-                    goal = transform.position;
+                    goal = FlatPos(transform.position);
                     speed = _combatStrafeSpeed;
                     if (Time.time >= _nextStrafeFlip)
                     {
@@ -189,7 +209,6 @@ namespace FusionMultiplayer.Player
                         {
                             var side = Vector3.Cross(Vector3.up, toEnemy.normalized);
                             strafe = side * _strafeSign;
-                            // Hold distance: ease away if too close, nudge in if a bit far.
                             var d = toEnemy.magnitude;
                             if (d < _combatRange * 0.45f)
                                 goal = FlatPos(transform.position) - toEnemy.normalized * 2f;
@@ -219,16 +238,80 @@ namespace FusionMultiplayer.Player
                     desired = strafe.normalized;
             }
 
-            Vector3 moveDir;
             if (desired.sqrMagnitude < 0.04f)
-                moveDir = Vector3.zero;
-            else
-                moveDir = ComputeSteerDir(desired.normalized);
+                return Vector3.zero;
 
-            if (moveDir.sqrMagnitude > 0.01f)
-                _cc.Move(moveDir * speed * Time.deltaTime + Physics.gravity * Time.deltaTime);
-            else
-                _cc.Move(Physics.gravity * Time.deltaTime);
+            var moveDir = ComputeSteerDir(desired.normalized);
+            if (moveDir.sqrMagnitude < 0.01f)
+                return Vector3.zero;
+
+            return moveDir * speed;
+        }
+
+        private bool ShouldAutoJump(Vector3 horizontalVelocity)
+        {
+            if (_cc == null || !_cc.enabled || !_cc.isGrounded)
+                return false;
+
+            var flat = horizontalVelocity;
+            flat.y = 0f;
+            if (flat.sqrMagnitude < 0.25f)
+                flat = transform.forward;
+            flat.Normalize();
+
+            var feet = transform.position + Vector3.up * 0.08f;
+            var mid = transform.position + Vector3.up * (_cc.height * 0.35f);
+
+            // Blocked at mid-torso → possible ledge / wall.
+            if (!Physics.SphereCast(
+                    mid,
+                    _steerProbeRadius * 0.85f,
+                    flat,
+                    out var midHit,
+                    _climbProbeDistance,
+                    Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore) ||
+                IsOwnCollider(midHit.collider) ||
+                midHit.collider.GetComponentInParent<PlayerAvatar>() != null)
+            {
+                return false;
+            }
+
+            // Open space above foot height + max ledge → can land on top.
+            var topCheckOrigin = transform.position + Vector3.up * (_maxAutoJumpLedge + 0.15f);
+            if (Physics.SphereCast(
+                    topCheckOrigin,
+                    _steerProbeRadius * 0.7f,
+                    flat,
+                    out var topHit,
+                    _climbProbeDistance,
+                    Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore) &&
+                !IsOwnCollider(topHit.collider) &&
+                topHit.collider.GetComponentInParent<PlayerAvatar>() == null)
+            {
+                // Tall wall / 2+ blocks — do not jump.
+                return false;
+            }
+
+            // Measure ledge top relative to feet.
+            var ledgeProbe = midHit.point + flat * 0.15f + Vector3.up * (PlayerMovement.JumpApexHeight + 0.2f);
+            if (!Physics.Raycast(
+                    ledgeProbe,
+                    Vector3.down,
+                    out var ledgeHit,
+                    PlayerMovement.JumpApexHeight + 0.5f,
+                    Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore))
+            {
+                return false;
+            }
+
+            if (IsOwnCollider(ledgeHit.collider))
+                return false;
+
+            var ledgeHeight = ledgeHit.point.y - feet.y;
+            return ledgeHeight > 0.25f && ledgeHeight <= _maxAutoJumpLedge + 0.05f;
         }
 
         private void TickAimAndFire()
@@ -391,7 +474,6 @@ namespace FusionMultiplayer.Player
                         clearance = hit.distance;
                 }
 
-                // Prefer forward alignment and open space.
                 var score = clearance + Vector3.Dot(dir, desiredFlat) * 0.65f;
                 if (score > bestScore)
                 {
@@ -400,7 +482,6 @@ namespace FusionMultiplayer.Player
                 }
             }
 
-            // If forward whisker blocked, bias along wall normal of center cast.
             if (Physics.SphereCast(
                     origin,
                     _steerProbeRadius,
@@ -421,8 +502,11 @@ namespace FusionMultiplayer.Player
             return bestDir;
         }
 
-        private void TrackStuck()
+        private bool UpdateStuckTracker(out Vector3 recoveryHorizontal, out bool recoveryJump)
         {
+            recoveryHorizontal = Vector3.zero;
+            recoveryJump = false;
+
             var moved = Vector3.Distance(FlatPos(transform.position), FlatPos(_lastPosSample));
             var wantsMove = _state is BotState.Patrol or BotState.Chase or BotState.Search;
             if (wantsMove && moved < _stuckMoveEpsilon)
@@ -440,11 +524,12 @@ namespace FusionMultiplayer.Player
                     }
 
                     PickPatrolTarget();
-                    // Nudge sideways to escape corner.
                     var nudge = Quaternion.Euler(0f, Random.Range(60f, 120f) * (_strafeSign >= 0 ? 1f : -1f), 0f) *
                                 transform.forward;
-                    if (_cc != null && _cc.enabled)
-                        _cc.Move(nudge.normalized * 0.6f);
+                    recoveryHorizontal = nudge.normalized * _patrolSpeed;
+                    recoveryJump = true;
+                    _lastPosSample = transform.position;
+                    return true;
                 }
             }
             else
@@ -453,6 +538,7 @@ namespace FusionMultiplayer.Player
             }
 
             _lastPosSample = transform.position;
+            return false;
         }
 
         private bool IsOwnCollider(Collider col)

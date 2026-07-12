@@ -3,12 +3,13 @@ using UnityEngine.InputSystem;
 
 namespace FusionMultiplayer.Player
 {
-    /// <summary>Keyboard and mouse sampling for Fusion OnInput (WASD, look, E / Q).</summary>
+    /// <summary>Keyboard and mouse sampling for Fusion OnInput (WASD, look, E / Q / Space).</summary>
     internal static class GameplayInput
     {
         private static bool _placeEdgeQueued;
         private static bool _removeEdgeQueued;
         private static bool _fireEdgeQueued;
+        private static bool _jumpEdgeQueued;
         private static Vector2 _lookAccumulator;
 
         /// <summary>Call every Unity frame before Fusion polls <see cref="Sample"/>.</summary>
@@ -25,6 +26,8 @@ namespace FusionMultiplayer.Player
                 _placeEdgeQueued = true;
             if (kb.qKey.wasPressedThisFrame)
                 _removeEdgeQueued = true;
+            if (kb.spaceKey.wasPressedThisFrame)
+                _jumpEdgeQueued = true;
 
             var mouse = Mouse.current;
             if (mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState == CursorLockMode.Locked)
@@ -86,6 +89,12 @@ namespace FusionMultiplayer.Player
                 {
                     data.Buttons.Set(GameplayButton.Remove, true);
                     _removeEdgeQueued = false;
+                }
+
+                if (kb.spaceKey.isPressed || _jumpEdgeQueued)
+                {
+                    data.Buttons.Set(GameplayButton.Jump, true);
+                    _jumpEdgeQueued = false;
                 }
             }
 
