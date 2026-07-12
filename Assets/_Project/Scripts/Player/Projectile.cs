@@ -28,10 +28,11 @@ namespace FusionMultiplayer.Player
         private bool _spawned;
         private PlayerRef _shooterRef;
 
-        /// <summary>Optional pre-spawn hook so bots can attribute shots after InputAuthority is cleared.</summary>
+        /// <summary>
+        /// Pre-spawn hook: only caches local shooter. Networked Shooter is applied in Spawned.
+        /// </summary>
         public void ConfigureShooter(PlayerRef shooter)
         {
-            Shooter = shooter;
             _shooterRef = shooter;
         }
 
@@ -43,9 +44,10 @@ namespace FusionMultiplayer.Player
 
         public override void Spawned()
         {
-            _spawned = true;
             _resolved = false;
-            if (Shooter != PlayerRef.None)
+            if (_shooterRef != PlayerRef.None)
+                Shooter = _shooterRef;
+            else if (Shooter != PlayerRef.None)
                 _shooterRef = Shooter;
             else
             {
@@ -58,6 +60,7 @@ namespace FusionMultiplayer.Player
             if (HasStateAuthority)
                 _lifetime = TickTimer.CreateFromSeconds(Runner, LifetimeSeconds);
 
+            _spawned = true;
             IgnoreShooterCollisions();
         }
 
@@ -68,9 +71,14 @@ namespace FusionMultiplayer.Player
             _shooterRef = PlayerRef.None;
         }
 
+        private bool CanUseNetworkedState()
+        {
+            return _spawned && Object != null && Object.IsValid;
+        }
+
         public override void FixedUpdateNetwork()
         {
-            if (!_spawned || !HasStateAuthority)
+            if (!CanUseNetworkedState() || !HasStateAuthority)
                 return;
 
             if (_lifetime.Expired(Runner))
@@ -81,7 +89,7 @@ namespace FusionMultiplayer.Player
 
             if (_resolved)
             {
-                if (Runner != null && Runner.IsRunning && Object != null && Object.IsValid)
+                if (Runner != null && Runner.IsRunning && Object.IsValid)
                     Runner.Despawn(Object);
                 return;
             }
@@ -91,9 +99,12 @@ namespace FusionMultiplayer.Player
             if (TrySweepHit(origin, step, out var sweepCollider))
             {
                 TryResolveCollision(sweepCollider);
-                if (_resolved)
+                if (_resolved || !CanUseNetworkedState())
                     return;
             }
+
+            if (!CanUseNetworkedState())
+                return;
 
             NetPosition = origin + step;
             transform.position = NetPosition;
@@ -102,7 +113,7 @@ namespace FusionMultiplayer.Player
 
         public override void Render()
         {
-            if (!_spawned)
+            if (!CanUseNetworkedState())
                 return;
 
             transform.position = NetPosition;
@@ -110,7 +121,7 @@ namespace FusionMultiplayer.Player
 
         private void OnTriggerEnter(Collider other)
         {
-            if (!_spawned || !HasStateAuthority || _resolved || other == null)
+            if (!CanUseNetworkedState() || !HasStateAuthority || _resolved || other == null)
                 return;
 
             TryResolveCollision(other);
@@ -164,7 +175,7 @@ namespace FusionMultiplayer.Player
 
         private void TryResolveCollision(Collider other)
         {
-            if (!_spawned || _resolved || other == null)
+            if (!CanUseNetworkedState() || _resolved || other == null)
                 return;
 
             if (other.GetComponentInParent<Projectile>() != null)
