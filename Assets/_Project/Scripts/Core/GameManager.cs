@@ -447,6 +447,17 @@ namespace FusionMultiplayer.Core
                     continue;
 
                 var oldOwner = pd.Object.InputAuthority;
+                if (oldOwner != PlayerRef.None &&
+                    oldOwner != player &&
+                    !pd.IsBotControlled &&
+                    IsActivePlayer(oldOwner))
+                {
+                    Debug.LogWarning(
+                        $"[FusionMultiplayer] Skip avatar restore for player {player.PlayerId} — " +
+                        $"token matches live owner {oldOwner.PlayerId}.");
+                    continue;
+                }
+
                 // Prefer avatar still owned by previous ref; also scan bots by character slot.
                 var avatar = PlayerOwnership.FindAvatar(oldOwner) ??
                              PlayerOwnership.FindAvatar(player) ??
@@ -471,6 +482,20 @@ namespace FusionMultiplayer.Core
                 Debug.Log($"[FusionMultiplayer] Restored avatar/control for reconnect player {player.PlayerId}");
                 return;
             }
+        }
+
+        private bool IsActivePlayer(PlayerRef player)
+        {
+            if (Runner == null || player == PlayerRef.None)
+                return false;
+
+            foreach (var active in Runner.ActivePlayers)
+            {
+                if (active == player)
+                    return true;
+            }
+
+            return false;
         }
 
         private static PlayerAvatar FindAvatarBySlot(int slot)

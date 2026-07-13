@@ -57,17 +57,16 @@ namespace FusionMultiplayer.Core
             }
         }
 
+        /// <summary>
+        /// Returns the in-memory reconnect token, creating a new one if needed.
+        /// Does not load <see cref="SessionReconnectStore"/> — shared PlayerPrefs (MPPM) would
+        /// otherwise give every client the host token and steal that PlayerData on join.
+        /// Explicit reconnect uses <see cref="SetReconnectToken"/> from the Reconnect button.
+        /// </summary>
         public static string EnsureReconnectToken()
         {
             if (!string.IsNullOrWhiteSpace(ReconnectToken))
                 return ReconnectToken;
-
-            if (SessionReconnectStore.TryLoad(out _, out var stored, out _) &&
-                !string.IsNullOrWhiteSpace(stored))
-            {
-                ReconnectToken = stored;
-                return ReconnectToken;
-            }
 
             ReconnectToken = Guid.NewGuid().ToString("N");
             return ReconnectToken;

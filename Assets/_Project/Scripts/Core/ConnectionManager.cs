@@ -734,6 +734,7 @@ namespace FusionMultiplayer.Core
 
         /// <summary>
         /// Reclaims an existing PlayerData (and later avatar via GameManager) for a reconnecting client.
+        /// Never steals a slot still owned by another connected player (guards shared/stale tokens).
         /// </summary>
         private static bool TryRestorePlayerByToken(NetworkRunner runner, PlayerRef player, string token)
         {
@@ -751,6 +752,15 @@ namespace FusionMultiplayer.Core
                 if (oldOwner == player)
                     return true;
 
+                // Only reclaim orphan / bot-held slots — never hijack a live player's profile.
+                if (oldOwner != PlayerRef.None && IsPlayerStillConnected(runner, oldOwner) && !pd.IsBotControlled)
+                {
+                    Debug.LogWarning(
+                        $"[FusionMultiplayer] Ignoring reconnect token collision for player {player.PlayerId} " +
+                        $"(slot still owned by connected player {oldOwner.PlayerId}).");
+                    continue;
+                }
+
                 pd.Object.AssignInputAuthority(player);
                 if (pd.HasStateAuthority)
                 {
@@ -762,6 +772,20 @@ namespace FusionMultiplayer.Core
 
                 Debug.Log($"[FusionMultiplayer] Restored PlayerData for reconnect token (player {player.PlayerId})");
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsPlayerStillConnected(NetworkRunner runner, PlayerRef player)
+        {
+            if (runner == null || player == PlayerRef.None)
+                return false;
+
+            foreach (var active in runner.ActivePlayers)
+            {
+                if (active == player)
+                    return true;
             }
 
             return false;

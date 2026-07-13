@@ -119,9 +119,11 @@ namespace FusionMultiplayer.Player
                 if (other.Object.InputAuthority == self)
                     continue;
 
-                // Reconnect reclaiming a bot-held body that still has our token but cleared authority.
+                // Only ignore the orphan/bot slot we are reclaiming — never skip another live player
+                // just because reconnect tokens collided (e.g. shared PlayerPrefs in MPPM).
                 if (!string.IsNullOrWhiteSpace(reconnectToken) &&
-                    string.Equals(other.ReconnectToken.ToString(), reconnectToken, StringComparison.Ordinal))
+                    string.Equals(other.ReconnectToken.ToString(), reconnectToken, StringComparison.Ordinal) &&
+                    (other.IsBotControlled || other.Object.InputAuthority == PlayerRef.None))
                     continue;
 
                 if (string.Equals(CanonicalNickname(other.Nick.ToString()), canonical,

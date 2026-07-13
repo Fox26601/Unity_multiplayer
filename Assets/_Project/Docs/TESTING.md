@@ -82,4 +82,4 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Build/Sandbox: E place / Q remove with no placement ghost; Sandbox removes any placed block; Build host can remove own blocks, others cannot remove host blocks
 - [ ] Session browser filters + started rooms not joinable (except known reconnect token)
 - [ ] Career Leaderboard button opens modal after at least one finished match; Close / Esc / dim dismiss it; no always-on corner panel
-- [ ] Duplicate nickname on join is rejected; Main Menu shows red “Nickname … is already taken” status after return
+- [ ] Duplicate nickname on join is rejected; Main Menu shows red “Nickname … is already taken” status after return (MPPM: each client must get own PlayerData — no “Restored PlayerData for reconnect token” on a fresh second join)
