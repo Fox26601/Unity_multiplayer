@@ -596,11 +596,9 @@ namespace FusionMultiplayer.Core
             if (_intentionalShutdown)
                 return;
 
-            if (HasPendingUserNotice && TryConsumePendingUserNotice(out var pending))
-            {
-                SessionFailed?.Invoke(pending);
+            // Nickname reject already stored a pending Main Menu notice — do not overwrite or consume it.
+            if (HasPendingUserNotice)
                 return;
-            }
 
             var msg = $"Disconnected: {reason}";
             LocalDisconnectNotice?.Invoke(msg);
