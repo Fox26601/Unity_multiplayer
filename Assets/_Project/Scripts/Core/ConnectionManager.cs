@@ -39,6 +39,9 @@ namespace FusionMultiplayer.Core
         private Task<bool> _lobbyJoinTask;
         private SessionCatalog.GameModeKind _lobbyJoinMode;
 
+        /// <summary>Survives Main Menu reload so nickname-reject / kick reasons stay visible.</summary>
+        private static string _pendingUserNotice;
+
         public NetworkRunner Runner => _runner;
         public IReadOnlyList<SessionInfo> CachedSessionList => _sessionList;
         public bool IsInSessionLobby => _inSessionLobby;
@@ -432,16 +435,30 @@ namespace FusionMultiplayer.Core
             SceneManager.LoadScene(SceneIndices.MainMenu);
         }
 
-        /// <summary>Client-side: show nickname reject and leave to main menu.</summary>
+        /// <summary>Client-side: remember reason across Main Menu reload, then leave session.</summary>
         public static void NotifyNicknameRejected(string reason)
         {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = UiCopy.NicknameTaken;
+
+            _pendingUserNotice = reason;
             SessionFailed?.Invoke(reason);
             if (Instance != null)
                 _ = Instance.ShutdownToMainMenuAsync();
         }
 
+        /// <summary>Main Menu / SessionFlowUI: show and clear a pending kick/reject notice.</summary>
+        public static bool TryConsumePendingUserNotice(out string notice)
+        {
+            notice = _pendingUserNotice;
+            _pendingUserNotice = null;
+            return !string.IsNullOrWhiteSpace(notice);
+        }
+
+        public static bool HasPendingUserNotice => !string.IsNullOrWhiteSpace(_pendingUserNotice);
+
         /// <summary>
-        /// Server: let RpcNicknameRejected flush, then despawn PlayerData and disconnect the player.
+        /// Server: give RpcNicknameRejected time to arrive, then despawn PlayerData and disconnect.
         /// </summary>
         public void KickPlayerAfterNicknameReject(PlayerRef player, NetworkObject playerDataObject)
         {
@@ -453,8 +470,8 @@ namespace FusionMultiplayer.Core
 
         private IEnumerator KickPlayerAfterNicknameRejectRoutine(PlayerRef player, NetworkObject playerDataObject)
         {
-            yield return null;
-            yield return null;
+            // Allow targeted RPC to reach the joining client before disconnect.
+            yield return new WaitForSecondsRealtime(0.35f);
 
             if (_runner == null || !_runner.IsRunning)
                 yield break;
@@ -578,6 +595,12 @@ namespace FusionMultiplayer.Core
         {
             if (_intentionalShutdown)
                 return;
+
+            if (HasPendingUserNotice && TryConsumePendingUserNotice(out var pending))
+            {
+                SessionFailed?.Invoke(pending);
+                return;
+            }
 
             var msg = $"Disconnected: {reason}";
             LocalDisconnectNotice?.Invoke(msg);

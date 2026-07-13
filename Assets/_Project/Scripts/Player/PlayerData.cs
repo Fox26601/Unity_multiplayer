@@ -81,7 +81,7 @@ namespace FusionMultiplayer.Player
             {
                 Debug.LogWarning(
                     $"[FusionMultiplayer] Rejected nickname \"{requested}\" for player {player.PlayerId} — already taken.");
-                RpcNicknameRejected(player);
+                RpcNicknameRejected(player, requested);
                 ConnectionManager.Instance?.KickPlayerAfterNicknameReject(player, Object);
                 return;
             }
@@ -96,12 +96,12 @@ namespace FusionMultiplayer.Player
         }
 
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-        private void RpcNicknameRejected([RpcTarget] PlayerRef target)
+        private void RpcNicknameRejected([RpcTarget] PlayerRef target, NetworkString<_32> nick)
         {
             if (Runner == null || Runner.LocalPlayer != target)
                 return;
 
-            ConnectionManager.NotifyNicknameRejected(UiCopy.NicknameTaken);
+            ConnectionManager.NotifyNicknameRejected(UiCopy.NicknameTakenDetail(nick.ToString()));
         }
 
         private static bool IsNicknameTakenByOther(string requested, PlayerRef self, string reconnectToken)

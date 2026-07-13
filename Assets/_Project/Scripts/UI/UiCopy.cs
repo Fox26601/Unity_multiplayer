@@ -36,6 +36,12 @@ namespace FusionMultiplayer.UI
         public const string NicknameTaken =
             "Nickname already in use. Choose another name and try again.";
 
+        public static string NicknameTakenDetail(string nickname)
+        {
+            var nick = string.IsNullOrWhiteSpace(nickname) ? "that name" : $"\"{nickname.Trim()}\"";
+            return $"Nickname {nick} is already taken in this room. Change your nickname and try again.";
+        }
+
         public const string NicknameLabel = "Nickname";
         public const string RoomLabel = "Room name";
         public const string NicknamePlaceholder = "Enter your nickname";

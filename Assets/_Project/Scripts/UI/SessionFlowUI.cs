@@ -45,7 +45,17 @@ namespace FusionMultiplayer.UI
             ConnectionManager.SessionFailed += OnSessionFailed;
             ConnectionManager.SceneLoaded += OnSceneLoaded;
             ConnectionManager.LocalDisconnectNotice += OnLocalDisconnect;
-            SetStatus(string.Empty, false);
+
+            // Do not wipe a pending nickname-reject notice that survives scene reload.
+            if (!ConnectionManager.HasPendingUserNotice)
+                SetStatus(string.Empty, false);
+        }
+
+        private void Start()
+        {
+            ResolveRefs();
+            if (ConnectionManager.TryConsumePendingUserNotice(out var notice))
+                SetStatus($"{UiCopy.StatusFailedPrefix}{notice}", true);
         }
 
         private void OnDisable()
