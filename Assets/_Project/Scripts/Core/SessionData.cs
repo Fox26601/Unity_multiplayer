@@ -32,8 +32,11 @@ namespace FusionMultiplayer.Core
         /// <summary>When true, created sessions are not visible in the public browser.</summary>
         public static bool HiddenSession { get; set; }
 
-        /// <summary>Stable token used for crash reconnect.</summary>
+        /// <summary>Stable token used for crash reconnect (set via Reconnect, or minted per process).</summary>
         public static string ReconnectToken { get; private set; }
+
+        /// <summary>Last join/session error to show after returning to Main Menu.</summary>
+        public static string SessionError { get; private set; }
 
         /// <summary>Editor/local play without Photon Cloud (GameMode.Single).</summary>
         public static bool UseOfflineMode
@@ -58,10 +61,8 @@ namespace FusionMultiplayer.Core
         }
 
         /// <summary>
-        /// Returns the in-memory reconnect token, creating a new one if needed.
-        /// Does not load <see cref="SessionReconnectStore"/> — shared PlayerPrefs (MPPM) would
-        /// otherwise give every client the host token and steal that PlayerData on join.
-        /// Explicit reconnect uses <see cref="SetReconnectToken"/> from the Reconnect button.
+        /// In-memory reconnect identity. New joins mint a fresh token.
+        /// Crash reconnect must call <see cref="SetReconnectToken"/> with the stored value first.
         /// </summary>
         public static string EnsureReconnectToken()
         {
@@ -76,6 +77,18 @@ namespace FusionMultiplayer.Core
         {
             if (!string.IsNullOrWhiteSpace(token))
                 ReconnectToken = token.Trim();
+        }
+
+        public static void SetSessionError(string message) =>
+            SessionError = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+
+        public static void ClearSessionError() => SessionError = null;
+
+        public static bool TryConsumeSessionError(out string message)
+        {
+            message = SessionError;
+            SessionError = null;
+            return !string.IsNullOrWhiteSpace(message);
         }
 
         public static int ClampMaxPlayers(int value) =>

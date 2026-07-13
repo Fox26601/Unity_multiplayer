@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Fusion;
@@ -38,9 +37,6 @@ namespace FusionMultiplayer.Core
         private string _activeRoomName = string.Empty;
         private Task<bool> _lobbyJoinTask;
         private SessionCatalog.GameModeKind _lobbyJoinMode;
-
-        /// <summary>Survives Main Menu reload so nickname-reject / kick reasons stay visible.</summary>
-        private static string _pendingUserNotice;
 
         public NetworkRunner Runner => _runner;
         public IReadOnlyList<SessionInfo> CachedSessionList => _sessionList;
@@ -219,6 +215,7 @@ namespace FusionMultiplayer.Core
                 return false;
             }
 
+            SessionData.ClearSessionError();
             SessionStarting?.Invoke();
             dedicated = dedicated || SessionData.IsDedicatedLaunch;
 
@@ -435,58 +432,29 @@ namespace FusionMultiplayer.Core
             SceneManager.LoadScene(SceneIndices.MainMenu);
         }
 
-        /// <summary>Client-side: remember reason across Main Menu reload, then leave session.</summary>
+        /// <summary>Client: store error, leave session, reload Main Menu.</summary>
         public static void NotifyNicknameRejected(string reason)
         {
             if (string.IsNullOrWhiteSpace(reason))
                 reason = UiCopy.NicknameTaken;
 
-            _pendingUserNotice = reason;
+            SessionData.SetSessionError(reason);
             SessionFailed?.Invoke(reason);
             if (Instance != null)
                 _ = Instance.ShutdownToMainMenuAsync();
         }
 
-        /// <summary>Main Menu / SessionFlowUI: show and clear a pending kick/reject notice.</summary>
-        public static bool TryConsumePendingUserNotice(out string notice)
-        {
-            notice = _pendingUserNotice;
-            _pendingUserNotice = null;
-            return !string.IsNullOrWhiteSpace(notice);
-        }
-
-        public static bool HasPendingUserNotice => !string.IsNullOrWhiteSpace(_pendingUserNotice);
-
-        /// <summary>
-        /// Server: give RpcNicknameRejected time to arrive, then despawn PlayerData and disconnect.
-        /// </summary>
-        public void KickPlayerAfterNicknameReject(PlayerRef player, NetworkObject playerDataObject)
+        /// <summary>Server: drop a joining player after nickname reject (RPC already sent).</summary>
+        public void RejectJoiningPlayer(PlayerRef player, NetworkObject playerDataObject)
         {
             if (_runner == null || !NetworkAuthority.IsServerOrHost(_runner) || player == PlayerRef.None)
                 return;
 
-            StartCoroutine(KickPlayerAfterNicknameRejectRoutine(player, playerDataObject));
-        }
-
-        private IEnumerator KickPlayerAfterNicknameRejectRoutine(PlayerRef player, NetworkObject playerDataObject)
-        {
-            // Allow targeted RPC to reach the joining client before disconnect.
-            yield return new WaitForSecondsRealtime(0.35f);
-
-            if (_runner == null || !_runner.IsRunning)
-                yield break;
-
             if (playerDataObject != null && playerDataObject.IsValid)
                 _runner.Despawn(playerDataObject);
 
-            foreach (var active in _runner.ActivePlayers)
-            {
-                if (active == player)
-                {
-                    _runner.Disconnect(player);
-                    break;
-                }
-            }
+            if (IsPlayerStillConnected(_runner, player))
+                _runner.Disconnect(player);
         }
 
         private async Task DisposeRunnerAsync()
@@ -596,8 +564,8 @@ namespace FusionMultiplayer.Core
             if (_intentionalShutdown)
                 return;
 
-            // Nickname reject already stored a pending Main Menu notice — do not overwrite or consume it.
-            if (HasPendingUserNotice)
+            // Nickname reject already stored SessionData.SessionError — do not overwrite it.
+            if (!string.IsNullOrWhiteSpace(SessionData.SessionError))
                 return;
 
             var msg = $"Disconnected: {reason}";
@@ -733,8 +701,8 @@ namespace FusionMultiplayer.Core
         }
 
         /// <summary>
-        /// Reclaims an existing PlayerData (and later avatar via GameManager) for a reconnecting client.
-        /// Never steals a slot still owned by another connected player (guards shared/stale tokens).
+        /// Reclaims PlayerData for a reconnecting client when the token matches a free seat
+        /// (bot / no owner). Does not take over another connected player's profile.
         /// </summary>
         private static bool TryRestorePlayerByToken(NetworkRunner runner, PlayerRef player, string token)
         {
@@ -752,14 +720,8 @@ namespace FusionMultiplayer.Core
                 if (oldOwner == player)
                     return true;
 
-                // Only reclaim orphan / bot-held slots — never hijack a live player's profile.
-                if (oldOwner != PlayerRef.None && IsPlayerStillConnected(runner, oldOwner) && !pd.IsBotControlled)
-                {
-                    Debug.LogWarning(
-                        $"[FusionMultiplayer] Ignoring reconnect token collision for player {player.PlayerId} " +
-                        $"(slot still owned by connected player {oldOwner.PlayerId}).");
+                if (!CanReclaimSeat(runner, pd, oldOwner))
                     continue;
-                }
 
                 pd.Object.AssignInputAuthority(player);
                 if (pd.HasStateAuthority)
@@ -775,6 +737,14 @@ namespace FusionMultiplayer.Core
             }
 
             return false;
+        }
+
+        private static bool CanReclaimSeat(NetworkRunner runner, PlayerData pd, PlayerRef oldOwner)
+        {
+            if (pd.IsBotControlled || oldOwner == PlayerRef.None)
+                return true;
+
+            return !IsPlayerStillConnected(runner, oldOwner);
         }
 
         private static bool IsPlayerStillConnected(NetworkRunner runner, PlayerRef player)

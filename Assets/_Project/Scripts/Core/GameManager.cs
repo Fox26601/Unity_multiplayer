@@ -451,12 +451,7 @@ namespace FusionMultiplayer.Core
                     oldOwner != player &&
                     !pd.IsBotControlled &&
                     IsActivePlayer(oldOwner))
-                {
-                    Debug.LogWarning(
-                        $"[FusionMultiplayer] Skip avatar restore for player {player.PlayerId} — " +
-                        $"token matches live owner {oldOwner.PlayerId}.");
                     continue;
-                }
 
                 // Prefer avatar still owned by previous ref; also scan bots by character slot.
                 var avatar = PlayerOwnership.FindAvatar(oldOwner) ??

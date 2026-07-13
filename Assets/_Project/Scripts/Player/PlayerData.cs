@@ -77,12 +77,12 @@ namespace FusionMultiplayer.Player
             var requested = string.IsNullOrWhiteSpace(nick.ToString()) ? "Player" : nick.ToString().Trim();
             var player = Object.InputAuthority;
 
-            if (IsNicknameTakenByOther(requested, player, token.ToString()))
+            if (IsNicknameTakenByOther(requested, player))
             {
                 Debug.LogWarning(
                     $"[FusionMultiplayer] Rejected nickname \"{requested}\" for player {player.PlayerId} — already taken.");
                 RpcNicknameRejected(player, requested);
-                ConnectionManager.Instance?.KickPlayerAfterNicknameReject(player, Object);
+                ConnectionManager.Instance?.RejectJoiningPlayer(player, Object);
                 return;
             }
 
@@ -104,7 +104,8 @@ namespace FusionMultiplayer.Player
             ConnectionManager.NotifyNicknameRejected(UiCopy.NicknameTakenDetail(nick.ToString()));
         }
 
-        private static bool IsNicknameTakenByOther(string requested, PlayerRef self, string reconnectToken)
+        /// <summary>Nickname must be unique among active human players in the room.</summary>
+        private static bool IsNicknameTakenByOther(string requested, PlayerRef self)
         {
             var canonical = CanonicalNickname(requested);
             if (string.IsNullOrEmpty(canonical))
@@ -114,16 +115,11 @@ namespace FusionMultiplayer.Player
             {
                 if (other == null || other.Object == null || !other.Object.IsValid)
                     continue;
-
-                // Own object (including reconnect reclaim of the same PlayerData).
-                if (other.Object.InputAuthority == self)
+                if (other.IsBotControlled)
                     continue;
 
-                // Only ignore the orphan/bot slot we are reclaiming — never skip another live player
-                // just because reconnect tokens collided (e.g. shared PlayerPrefs in MPPM).
-                if (!string.IsNullOrWhiteSpace(reconnectToken) &&
-                    string.Equals(other.ReconnectToken.ToString(), reconnectToken, StringComparison.Ordinal) &&
-                    (other.IsBotControlled || other.Object.InputAuthority == PlayerRef.None))
+                var owner = other.Object.InputAuthority;
+                if (owner == PlayerRef.None || owner == self)
                     continue;
 
                 if (string.Equals(CanonicalNickname(other.Nick.ToString()), canonical,
@@ -139,11 +135,7 @@ namespace FusionMultiplayer.Player
             if (string.IsNullOrWhiteSpace(nick))
                 return string.Empty;
 
-            var trimmed = nick.Trim();
-            if (trimmed.StartsWith("BOT ", StringComparison.OrdinalIgnoreCase))
-                trimmed = trimmed.Substring(4).Trim();
-
-            return trimmed;
+            return nick.Trim();
         }
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
