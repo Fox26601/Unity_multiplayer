@@ -10,6 +10,7 @@
 - [Setup guide](Assets/_Project/Docs/SETUP.md)
 - [Fusion import checklist (CS0246)](Assets/_Project/Docs/FUSION_IMPORT_CHECKLIST.md)
 - [Testing checklist](Assets/_Project/Docs/TESTING.md)
+- [Defense presentation (HTML)](PRESENTATION.html)
 
 ## Requirements
 

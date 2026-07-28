@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fusion Multiplayer — защита проекта</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1412;
+      --bg-2: #18201c;
+      --ink: #e8efe9;
+      --muted: #9aab9f;
+      --line: #2a3830;
+      --accent: #c4f04d;
+      --accent-2: #3dd6c6;
+      --warn: #f0b45a;
+      --card: #1a2420;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "DM Sans", system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(1200px 700px at 10% -10%, rgba(61, 214, 198, 0.12), transparent 55%),
+        radial-gradient(900px 600px at 100% 0%, rgba(196, 240, 77, 0.08), transparent 50%),
+        linear-gradient(165deg, #101612 0%, #0c100e 45%, #121a16 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .deck {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      width: 100%;
+    }
+
+    .slide {
+      display: none;
+      height: 100%;
+      padding: clamp(2rem, 5vw, 4.5rem) clamp(2rem, 6vw, 5.5rem);
+      flex-direction: column;
+      justify-content: center;
+      gap: 1.25rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      animation: in 280ms ease;
+    }
+
+    .slide.active { display: flex; }
+
+    @keyframes in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .kicker {
+      color: var(--accent-2);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: clamp(2.6rem, 6vw, 4.4rem);
+      line-height: 1.05;
+      max-width: 16ch;
+    }
+
+    h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: clamp(2rem, 4.2vw, 3.1rem);
+      line-height: 1.15;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.35rem;
+    }
+
+    .lead {
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      color: var(--muted);
+      max-width: 42rem;
+      line-height: 1.5;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1rem;
+      margin-top: 0.5rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.9rem;
+      margin-top: 0.5rem;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 70%), var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 1.1rem 1.15rem;
+      min-height: 7.5rem;
+    }
+
+    .card p, .list li {
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.45;
+    }
+
+    .list {
+      list-style: none;
+      display: grid;
+      gap: 0.65rem;
+      margin-top: 0.35rem;
+    }
+
+    .list li {
+      position: relative;
+      padding-left: 1.15rem;
+    }
+
+    .list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 0.75rem;
+    }
+
+    .flow span {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.7rem 1rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .flow i {
+      color: var(--accent-2);
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .two { grid-template-columns: 1fr; }
+    }
+
+    .note {
+      border-left: 3px solid var(--warn);
+      padding: 0.65rem 0.9rem;
+      background: rgba(240, 180, 90, 0.08);
+      border-radius: 0 10px 10px 0;
+      color: #f3d7a8;
+      font-size: 0.95rem;
+      max-width: 40rem;
+    }
+
+    .bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 1.4rem;
+      background: linear-gradient(transparent, rgba(8, 12, 10, 0.92));
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .progress {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      width: 0%;
+      transition: width 200ms ease;
+    }
+
+    .hint kbd {
+      font-family: inherit;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.1rem 0.4rem;
+      background: #141c18;
+    }
+
+    strong { color: var(--ink); font-weight: 600; }
+    em { font-family: "Instrument Serif", Georgia, serif; font-style: italic; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="deck" id="deck">
+
+    <section class="slide active">
+      <p class="kicker">Photon Fusion 2 · Unity 6</p>
+      <h1>Fusion Multiplayer</h1>
+      <p class="lead">Клиент–серверный мультиплеер: лобби, арена, слоты персонажей, бой, reconnect и dedicated server.</p>
+      <div class="meta">
+        <span class="pill">Daniil Gorlov</span>
+        <span class="pill">Solo</span>
+        <span class="pill">ветка feature/final-project</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Стек</p>
+      <h2>Что внутри</h2>
+      <div class="grid">
+        <div class="card"><h3>Engine</h3><p>Unity 6000.3 · New Input System · UGUI / TMP</p></div>
+        <div class="card"><h3>Network</h3><p>Photon Fusion 2 · Host / Client / Dedicated Server</p></div>
+        <div class="card"><h3>Authority</h3><p>StateAuthority на сервере · InputAuthority у игрока</p></div>
+        <div class="card"><h3>Не Shared Mode</h3><p>Мастер-миграция не используется (waived для dedicated)</p></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Сцены</p>
+      <h2>Поток сессии</h2>
+      <div class="flow">
+        <span>00_Boot</span><i>→</i>
+        <span>Main Menu</span><i>→</i>
+        <span>Lobby</span><i>→</i>
+        <span>Arena / Plaza / Ruins</span><i>→</i>
+        <span>Vote / Leave</span>
+      </div>
+      <ul class="list" style="margin-top:1.4rem">
+        <li>Create / Join / Quick Join / Reconnect с Main Menu</li>
+        <li>START грузит карту через <strong>Runner.LoadScene</strong> на сервере</li>
+        <li>Leave → shutdown runner → возврат в Main Menu</li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Mandatory · 40</p>
+      <h2>Ключевые требования</h2>
+      <div class="two">
+        <ul class="list">
+          <li>Комнаты ≥3 игроков, capacity 2–10</li>
+          <li>≥3 RPC разных типов + JSON MatchConfig</li>
+          <li>NetworkTransform на avatar / block / prop</li>
+          <li>Слоты персонажей — сервер владеет occupancy</li>
+          <li>Счёт / таймер / game over UI</li>
+          <li>Spawn / Despawn через NetworkRunner</li>
+        </ul>
+        <div class="note">Projectile без NetworkTransform: серверная networked pose, без double sync.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Networking</p>
+      <h2>Авторитет сервера</h2>
+      <div class="grid">
+        <div class="card"><h3>Слоты</h3><p><code>RPC_RequestCharacter</code> берёт игрока из <strong>RpcInfo.Source</strong>, не из клиента.</p></div>
+        <div class="card"><h3>Урон / счёт</h3><p>Мутации только на StateAuthority: <code>ApplyServerHit</code>, <code>ServerAwardScore</code>.</p></div>
+        <div class="card"><h3>JSON config</h3><p>Deserialize + ack MatchConfigDto; join gate — ConnectionToken / phase.</p></div>
+        <div class="card"><h3>Сцены</h3><p>Смена карты только с сервера после START / vote.</p></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Gameplay</p>
+      <h2>Матч</h2>
+      <div class="grid">
+        <div class="card"><h3>Слоты 0–9</h3><p>Уникальная занятость, spawn точки со jitter.</p></div>
+        <div class="card"><h3>Бой / Sandbox</h3><p>Стрельба, здоровье, Tab scoreboard, блоки E/Q.</p></div>
+        <div class="card"><h3>Чат</h3><p>Global + whisper по нику.</p></div>
+        <div class="card"><h3>Конец</h3><p>Таймер 5:00 → results → map vote → новая карта или Leave.</p></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Bonus highlights</p>
+      <h2>Что заявлено сверх mandatory</h2>
+      <div class="grid">
+        <div class="card"><h3>+15 Reconnect</h3><p>ConnectionToken → возврат InputAuthority, снятие бота.</p></div>
+        <div class="card"><h3>+15 Bot takeover</h3><p>После disconnect аватар остаётся, AI в FixedUpdateNetwork.</p></div>
+        <div class="card"><h3>+55 Dedicated</h3><p><code>-dedicated -room=Name</code>, GameMode.Server.</p></div>
+        <div class="card"><h3>+8 DB · +5 NRB</h3><p>Локальный JSON career stats · custom NetworkRigidbody3D.</p></div>
+      </div>
+      <p class="note" style="margin-top:0.8rem">NetworkMecanimAnimator — <strong>не заявляем</strong> (deferred).</p>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Reconnect</p>
+      <h2>Crash ≠ Leave</h2>
+      <div class="two">
+        <ul class="list">
+          <li><strong>Force-quit</strong> сохраняет token → кнопка Reconnect</li>
+          <li>Комната soft-lock: <code>phase=Started</code>, <code>IsOpen=true</code></li>
+          <li>Неизвестный join после START — refuse</li>
+          <li>Известный token — reclaim avatar / slot / score</li>
+        </ul>
+        <div class="note">Если закрыть Photon-комнату, reconnect упрётся в GameClosed (32764) до нашего OnConnectRequest.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Dedicated</p>
+      <h2>Серверный процесс</h2>
+      <ul class="list">
+        <li>Запуск: <code>… -batchmode -nographics -dedicated -room=Ded1</code></li>
+        <li>Клиенты Join → START (RPC) → сервер грузит карту</li>
+        <li>Сервер — единственный StateAuthority</li>
+        <li>Disconnect клиента → bot; Reconnect → контроль обратно</li>
+      </ul>
+      <p class="lead" style="margin-top:1rem">В редакторе для локальных тестов: Host create + Client join.</p>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Демо · 5–8 мин</p>
+      <h2>Сценарий показа</h2>
+      <ol class="list" style="counter-reset: n">
+        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">1.</span> Boot → Create room (max ≥3)</li>
+        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">2.</span> Второй клиент Join → Lobby → START</li>
+        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">3.</span> Разные слоты → стрельба / chat / Tab</li>
+        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">4.</span> Force-quit → BOT → Reconnect</li>
+        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">5.</span> End / vote → Leave → Leaderboard</li>
+      </ol>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Вопросы</p>
+      <h2>Короткие ответы</h2>
+      <div class="grid">
+        <div class="card"><h3>Почему NT не на Projectile?</h3><p>Свой tick pose на сервере; NT давал конфликт интерполяции.</p></div>
+        <div class="card"><h3>Почему комната не closed?</h3><p>Нужен soft-lock для token reconnect без GameClosed.</p></div>
+        <div class="card"><h3>Join vs Reconnect?</h3><p>После START — только Reconnect с тем же token.</p></div>
+        <div class="card"><h3>Custom NRB?</h3><p>Свой <code>Networking.NetworkRigidbody3D</code>, без Fusion Physics addon.</p></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Итог</p>
+      <h1>Спасибо</h1>
+      <p class="lead">Готов ответить на вопросы и показать live-сессию.</p>
+      <div class="meta">
+        <span class="pill">docs: ASSIGNMENT · SETUP · TESTING · RELEASE</span>
+        <span class="pill">repo: Unity_multiplayer</span>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="bar">
+    <div class="hint">Навигация: <kbd>→</kbd> <kbd>←</kbd> · <kbd>Space</kbd> · клик</div>
+    <div id="counter">1 / 12</div>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    let i = 0;
+    const counter = document.getElementById("counter");
+    const progress = document.getElementById("progress");
+
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+      counter.textContent = `${i + 1} / ${slides.length}`;
+      progress.style.width = `${((i + 1) / slides.length) * 100}%`;
+      location.hash = String(i + 1);
+    }
+
+    function next() { show(i + 1); }
+    function prev() { show(i - 1); }
+
+    document.addEventListener("keydown", (e) => {
+      if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) {
+        e.preventDefault();
+        next();
+      } else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "Home") show(0);
+      else if (e.key === "End") show(slides.length - 1);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("a, button, kbd")) return;
+      if (e.clientX > window.innerWidth * 0.35) next();
+      else prev();
+    });
+
+    const fromHash = parseInt(location.hash.replace("#", ""), 10);
+    show(Number.isFinite(fromHash) && fromHash > 0 ? fromHash - 1 : 0);
+  </script>
+</body>
+</html>
