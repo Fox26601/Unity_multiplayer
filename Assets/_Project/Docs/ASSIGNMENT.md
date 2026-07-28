@@ -24,7 +24,7 @@
 | # | Requirement | Implementation |
 |---|-------------|----------------|
 | 1 | Open / join room, ≥3 players, configurable capacity | `ConnectionManager.StartSessionAsync`, `SessionData.MaxPlayers` (2–10), create UI dropdown |
-| 2 | ≥3 RPCs with different variable types | `RPC_RequestCharacter(int)`, `RPC_CharacterApproved(..., Vector3, Quaternion)`, `RPC_Broadcast(NetworkString)`, server hit via `ApplyServerHit(float, PlayerRef, Vector3)` |
+| 2 | ≥3 RPCs with different variable types | `RPC_RequestCharacter(int)`, `RPC_CharacterApproved(..., Vector3, Quaternion)`, `ChatManager.RPC_Broadcast(NetworkString)` |
 | 3 | JSON Serialize + Deserialize (≥3 fields) via RPC | `MatchConfigDto` → `JsonUtility` → `GameManager.RPC_SubmitMatchConfigJson` → deserialize + ack |
 | 4 | NetworkTransform | On `PlayerAvatar`, `PlacedBlock`, `PhysicsProp`. Projectiles use server-authoritative networked pose (no `NetworkTransform`) |
 | 5 | New Input System | `GameplayInput` / `GameplayNetworkInput` + `OnInput` |
@@ -32,10 +32,10 @@
 | 7 | Scene changes via master/Photon | `ConnectionManager.ServerStartMatch` / `Runner.LoadScene` on server |
 | 8 | UI split host vs client | Different lobby status strings; create-room settings on create page; clients may request START |
 | 9 | Character select, unique slots, server owns occupancy | `GameManager.CharacterOwners` (`RpcInfo.Source`), server spawns avatar |
-| 10 | ≥3 server-only random decisions | Spawn jitter, `MatchEventId`, crit `RollDamage` + vote tie-break |
+| 10 | ≥3 server-only random decisions | Spawn jitter, crit `RollDamage`, vote tie-break; `MatchEventId` is a synced UI match-event label |
 | 11 | End condition → results UI with scores | `MatchTimer` → `MasterSetGameOver` → `GameOverUI` |
 | 12 | Synced score system | `PlayerData.Score` / `Deaths` `[Networked]` |
-| 13 | Close room, return to menu, valid loop | `SessionLock` (`phase=Started`, room stays open for reconnect); `ShutdownToMainMenuAsync`; map vote restart |
+| 13 | Close room, return to menu, valid loop | Soft-lock: `SessionLock` sets `phase=Started` but keeps `IsOpen=true` (reconnect-safe); new joins refused via token gate; `LeaveToMainMenuAsync` / map vote restart |
 | 14 | NetworkRunner.Spawn / Despawn | Avatars, projectiles, blocks, physics props |
 
 ## Bonus — how implemented
@@ -44,7 +44,7 @@
 |-------|--------|--------|----------------|
 | Room settings for creator | 6 | Done | Mode / map / difficulty / max players / hidden |
 | NetworkMecanimAnimator | 8 | **Deferred** | Not claimed this submission |
-| NetworkRigidbody3D | 5 | Done | Custom `Networking.NetworkRigidbody3D` on `PhysicsProp` |
+| NetworkRigidbody3D | 5 | Done | Custom SA pose/velocity sync `Networking.NetworkRigidbody3D` on `PhysicsProp` |
 | ≥5 `[Networked]` vars | 7 | Done | Health, Score, slots, timers, votes, tokens, etc. |
 | Session list + player counts | 5 | Done | `SessionBrowserUI` |
 | Join error handling | 3 | Done | `FormatStartGameError`, refuse full/started |
@@ -55,7 +55,7 @@
 | Bot replaces disconnected player | 15 | Done | `BotTakeover` + `BotBrain` |
 | Random join by ≥3 settings | 5 | Done | `QuickJoinAsync` |
 | Dynamic matchmaking | 5 | Done | Periodic lobby session-list refresh |
-| Database read/write | 8 | Done | Local JSON `MatchStatsDatabase` + `CareerStatsHud` |
+| Database read/write | 8 | Done | Local JSON `MatchStatsDatabase` (written on each peer at game-over) + `CareerStatsHud` |
 | Dedicated Server | 55 | Done | `-dedicated` / `-room=Name` |
 | Surprise | 10 | Done | Physics props, map vote, Tab scoreboard, whisper |
 

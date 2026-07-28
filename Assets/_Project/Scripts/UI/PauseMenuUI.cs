@@ -14,6 +14,8 @@ namespace FusionMultiplayer.UI
     {
         public static bool IsOpen { get; private set; }
 
+        private const int PauseBuildVersion = 2;
+
         private GameObject _overlay;
         private bool _built;
         private bool _leaveInProgress;
@@ -33,64 +35,89 @@ namespace FusionMultiplayer.UI
 
         private void EnsureUi()
         {
-            if (_built)
-                return;
-
             var existing = transform.Find("PauseOverlay");
             if (existing != null)
+            {
+                var marker = existing.GetComponent<PauseOverlayVersion>();
+                if (_built && marker != null && marker.Version == PauseBuildVersion)
+                {
+                    _overlay = existing.gameObject;
+                    return;
+                }
+
                 Destroy(existing.gameObject);
+                _built = false;
+            }
 
             _overlay = UiRuntimeBuildKit.CreateDimOverlay(transform, "PauseOverlay");
             _overlay.transform.SetAsLastSibling();
+            var version = _overlay.AddComponent<PauseOverlayVersion>();
+            version.Version = PauseBuildVersion;
 
-            var panel = UiRuntimeBuildKit.CreateCenteredPanel(_overlay.transform, "Panel", new Vector2(480f, 360f));
+            var panel = UiRuntimeBuildKit.CreateCenteredPanel(_overlay.transform, "Panel", new Vector2(520f, 420f));
+            var vlg = panel.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(28, 28, 24, 24);
+            vlg.spacing = 14f;
+            vlg.childAlignment = TextAnchor.UpperCenter;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
 
-            var title = CreateLabel(panel.transform, "Title", UiCopy.PauseTitle, UiTypography.Title,
-                UiTheme.TitleAccent, FontStyles.Bold, new Vector2(0f, 120f), new Vector2(400f, 48f));
+            var title = CreateLayoutLabel(panel.transform, "PauseTitle", UiCopy.PauseTitle, 42,
+                UiTheme.TitleAccent, FontStyles.Bold, 52f);
             title.alignment = TextAlignmentOptions.Center;
 
-            var resume = CreateButton(panel.transform, "BtnResume", UiCopy.PauseResume, new Vector2(0f, 40f));
+            var resume = CreateLayoutButton(panel.transform, "BtnResume", UiCopy.PauseResume);
             resume.onClick.AddListener(Close);
 
-            var leave = CreateButton(panel.transform, "BtnLeave", UiCopy.PauseLeave, new Vector2(0f, -40f));
+            var leave = CreateLayoutButton(panel.transform, "BtnLeave", UiCopy.PauseLeave);
             leave.onClick.AddListener(() => _ = LeaveAsync());
 
-            var controls = CreateLabel(panel.transform, "Controls", UiCopy.PauseControls, 16,
-                UiTheme.TextSubtitle, FontStyles.Normal, new Vector2(0f, -130f), new Vector2(420f, 80f));
+            var controls = CreateLayoutLabel(panel.transform, "PauseControls", UiCopy.PauseControls, 18,
+                UiTheme.TextSubtitle, FontStyles.Normal, 88f);
             controls.alignment = TextAlignmentOptions.Center;
             controls.textWrappingMode = TextWrappingModes.Normal;
+            controls.overflowMode = TextOverflowModes.Ellipsis;
+            controls.enableAutoSizing = true;
+            controls.fontSizeMin = 14f;
+            controls.fontSizeMax = 18f;
 
             _built = true;
         }
 
-        private static TMP_Text CreateLabel(Transform parent, string name, string text, int size, Color color,
-            FontStyles style, Vector2 anchoredPos, Vector2 sizeDelta)
+        private static TMP_Text CreateLayoutLabel(Transform parent, string name, string text, int size, Color color,
+            FontStyles style, float preferredHeight)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI),
+                typeof(LayoutElement));
             go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = sizeDelta;
+            var le = go.GetComponent<LayoutElement>();
+            le.preferredHeight = preferredHeight;
+            le.minHeight = preferredHeight * 0.6f;
+            le.flexibleWidth = 1f;
+
             var label = go.GetComponent<TMP_Text>();
             label.text = text;
             label.fontSize = size;
             label.fontStyle = style;
             label.color = color;
             label.raycastTarget = false;
+            label.overflowMode = TextOverflowModes.Ellipsis;
             UiTypography.ApplyFontTo(label);
             return label;
         }
 
-        private static Button CreateButton(Transform parent, string name, string label, Vector2 anchoredPos)
+        private static Button CreateLayoutButton(Transform parent, string name, string label)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image),
-                typeof(Button));
+                typeof(Button), typeof(LayoutElement));
             go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = new Vector2(320f, 56f);
+            var le = go.GetComponent<LayoutElement>();
+            le.preferredHeight = 56f;
+            le.minHeight = 56f;
+            le.flexibleWidth = 1f;
+
             go.GetComponent<Image>().color = UiTheme.ButtonBackground;
             var button = go.GetComponent<Button>();
             UiTypography.StyleButton(button);
@@ -106,9 +133,10 @@ namespace FusionMultiplayer.UI
             var tmp = textGo.GetComponent<TMP_Text>();
             tmp.text = label;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.fontSize = UiTypography.Body;
+            tmp.fontSize = 28f;
             tmp.color = Color.white;
             tmp.raycastTarget = false;
+            tmp.overflowMode = TextOverflowModes.Ellipsis;
             UiTypography.ApplyFontTo(tmp);
             return button;
         }
@@ -170,7 +198,6 @@ namespace FusionMultiplayer.UI
             _leaveInProgress = true;
             try
             {
-                // Close overlay without SetOpen(false) — that can re-lock gameplay cursor.
                 IsOpen = false;
                 if (_overlay != null)
                     _overlay.SetActive(false);
@@ -178,7 +205,7 @@ namespace FusionMultiplayer.UI
                 GameplayInputMode.SetMenu();
 
                 if (ConnectionManager.Instance != null)
-                    await ConnectionManager.Instance.ShutdownToMainMenuAsync();
+                    await ConnectionManager.Instance.LeaveToMainMenuAsync();
                 else
                     GameplayInputMode.SetMenu();
             }
@@ -207,6 +234,11 @@ namespace FusionMultiplayer.UI
         {
             var chat = Object.FindFirstObjectByType<ChatUI>();
             return chat != null && GameplayInputMode.ChatBlockingGameplay;
+        }
+
+        private sealed class PauseOverlayVersion : MonoBehaviour
+        {
+            public int Version;
         }
     }
 }

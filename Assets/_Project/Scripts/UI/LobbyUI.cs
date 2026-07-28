@@ -23,6 +23,12 @@ namespace FusionMultiplayer.UI
         private Text _playerListLegacy;
         private Text _statusLegacy;
         private bool _leaveInProgress;
+        private readonly StringBuilder _playerListSb = new(256);
+        private readonly StringBuilder _signatureSb = new(128);
+        private float _nextListRefreshTime;
+        private string _lastPlayerListSignature = string.Empty;
+        private string _lastStatus;
+        private string _lastSessionInfo;
 
         /// <summary>Called by LobbyRuntimeRebuild after it creates TMP widgets.</summary>
         public void BindRuntimeTmp(TMP_Text playerList, TMP_Text status, Button start, TMP_Text sessionInfo,
@@ -121,7 +127,6 @@ namespace FusionMultiplayer.UI
 
             if (_startButton != null)
             {
-                // Host/server can start directly; clients request start via RPC (Dedicated Server).
                 _startButton.gameObject.SetActive(true);
                 _startButton.interactable = true;
             }
@@ -131,6 +136,11 @@ namespace FusionMultiplayer.UI
                 _leaveButton.gameObject.SetActive(true);
                 _leaveButton.interactable = !_leaveInProgress;
             }
+
+            if (Time.unscaledTime < _nextListRefreshTime)
+                return;
+
+            _nextListRefreshTime = Time.unscaledTime + 0.25f;
 
             UpdateSessionInfo(runner);
 
@@ -142,34 +152,52 @@ namespace FusionMultiplayer.UI
                     ? UiCopy.LobbyMasterStatus
                     : UiCopy.LobbyClientStatus);
 
-            var sb = new StringBuilder();
-            sb.AppendLine("ROOM PLAYERS");
-            sb.AppendLine("----------------");
+            RebuildPlayerListIfChanged(runner);
+        }
 
+        private void RebuildPlayerListIfChanged(NetworkRunner runner)
+        {
             var playerCount = 0;
             foreach (var _ in runner.ActivePlayers)
                 playerCount++;
 
             var maxPlayers = runner.SessionInfo.IsValid ? runner.SessionInfo.MaxPlayers : SessionData.MaxPlayers;
-            sb.AppendLine($"Count: {playerCount} / {maxPlayers}");
-            sb.AppendLine();
+
+            _signatureSb.Clear();
+            _signatureSb.Append(playerCount).Append('/').Append(maxPlayers);
+
+            _playerListSb.Clear();
+            _playerListSb.AppendLine("ROOM PLAYERS");
+            _playerListSb.AppendLine("----------------");
+            _playerListSb.Append("Count: ").Append(playerCount).Append(" / ").Append(maxPlayers)
+                .AppendLine().AppendLine();
 
             var anyListed = false;
-            foreach (var pd in PlayerRegistry.EnumerateAllData())
+            var list = PlayerRegistry.CopyAllData();
+            for (var i = 0; i < list.Count; i++)
             {
+                var pd = list[i];
                 if (pd.Object == null || !pd.Object.IsValid) continue;
                 anyListed = true;
                 var nick = pd.Nick.ToString();
                 var id = pd.Object.InputAuthority;
                 var youTag = id == runner.LocalPlayer ? " (you)" : string.Empty;
                 var tintHex = ColorUtility.ToHtmlStringRGB(pd.Tint);
-                sb.AppendLine($"• <color=#{tintHex}>{nick}</color>{youTag}");
+                _playerListSb.Append("• <color=#").Append(tintHex).Append('>').Append(nick)
+                    .Append("</color>").Append(youTag).AppendLine();
+                _signatureSb.Append('|').Append(id.PlayerId).Append(':').Append(nick).Append(':')
+                    .Append(tintHex);
             }
 
             if (!anyListed)
-                sb.AppendLine("(Player profiles still loading...)");
+                _playerListSb.AppendLine("(Player profiles still loading...)");
 
-            SetPlayerListText(sb.ToString());
+            var signature = _signatureSb.ToString();
+            if (signature == _lastPlayerListSignature)
+                return;
+
+            _lastPlayerListSignature = signature;
+            SetPlayerListText(_playerListSb.ToString());
         }
 
         private void UpdateSessionInfo(NetworkRunner runner)
@@ -208,14 +236,21 @@ namespace FusionMultiplayer.UI
 
         private void SetStatusText(string value)
         {
+            if (value == _lastStatus)
+                return;
+            _lastStatus = value;
             if (_statusText != null) _statusText.text = value;
             else if (_statusLegacy != null) _statusLegacy.text = value;
         }
 
         private void SetSessionInfoText(string value)
         {
+            value ??= string.Empty;
+            if (value == _lastSessionInfo)
+                return;
+            _lastSessionInfo = value;
             if (_sessionInfoText != null)
-                _sessionInfoText.text = value ?? string.Empty;
+                _sessionInfoText.text = value;
         }
 
         private void OnStartClicked()
@@ -230,7 +265,7 @@ namespace FusionMultiplayer.UI
                 return;
             }
 
-            foreach (var pd in PlayerRegistry.EnumerateAllData())
+            foreach (var pd in PlayerRegistry.CopyAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
                 {
@@ -255,7 +290,7 @@ namespace FusionMultiplayer.UI
             try
             {
                 if (ConnectionManager.Instance != null)
-                    await ConnectionManager.Instance.ShutdownToMainMenuAsync();
+                    await ConnectionManager.Instance.LeaveToMainMenuAsync();
             }
             finally
             {

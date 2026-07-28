@@ -27,6 +27,7 @@ namespace FusionMultiplayer.Player
         private bool _resolved;
         private bool _spawned;
         private PlayerRef _shooterRef;
+        private Collider[] _ignoredShooterColliders;
 
         /// <summary>
         /// Pre-spawn hook: only caches local shooter. Networked Shooter is applied in Spawned.
@@ -69,6 +70,7 @@ namespace FusionMultiplayer.Player
             _spawned = false;
             _resolved = false;
             _shooterRef = PlayerRef.None;
+            _ignoredShooterColliders = null;
         }
 
         private bool CanUseNetworkedState()
@@ -108,7 +110,6 @@ namespace FusionMultiplayer.Player
 
             NetPosition = origin + step;
             transform.position = NetPosition;
-            Physics.SyncTransforms();
         }
 
         public override void Render()
@@ -255,21 +256,33 @@ namespace FusionMultiplayer.Player
             if (_collider == null || _shooterRef == PlayerRef.None)
                 return;
 
-            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
+            var avatar = PlayerRegistry.FindAvatar(_shooterRef);
+            if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
             {
-                if (avatar.Object == null || !avatar.Object.IsValid)
-                    continue;
-
-                if (PlayerOwnership.ResolveLogicalOwner(avatar) != _shooterRef)
-                    continue;
-
-                foreach (var col in avatar.GetComponentsInChildren<Collider>(true))
+                // Slot / bot seats: InputAuthority may be None — fall back to scan once.
+                var buffer = PlayerRegistry.CopyAllAvatars();
+                for (var i = 0; i < buffer.Count; i++)
                 {
-                    if (col != null && col != _collider)
-                        Physics.IgnoreCollision(_collider, col, true);
+                    var candidate = buffer[i];
+                    if (candidate == null || candidate.Object == null || !candidate.Object.IsValid)
+                        continue;
+                    if (PlayerOwnership.ResolveLogicalOwner(candidate) == _shooterRef)
+                    {
+                        avatar = candidate;
+                        break;
+                    }
                 }
+            }
 
+            if (avatar == null)
                 return;
+
+            _ignoredShooterColliders = avatar.GetComponentsInChildren<Collider>(true);
+            for (var i = 0; i < _ignoredShooterColliders.Length; i++)
+            {
+                var col = _ignoredShooterColliders[i];
+                if (col != null && col != _collider)
+                    Physics.IgnoreCollision(_collider, col, true);
             }
         }
     }

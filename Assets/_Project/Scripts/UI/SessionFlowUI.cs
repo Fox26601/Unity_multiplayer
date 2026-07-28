@@ -77,6 +77,11 @@ namespace FusionMultiplayer.UI
             {
                 _statusText.text = message ?? string.Empty;
                 _statusText.color = color;
+                _statusText.enableAutoSizing = true;
+                _statusText.fontSizeMin = 16f;
+                _statusText.fontSizeMax = 22f;
+                _statusText.textWrappingMode = TextWrappingModes.Normal;
+                _statusText.overflowMode = TextOverflowModes.Ellipsis;
                 _statusText.gameObject.SetActive(show);
                 return;
             }

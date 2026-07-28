@@ -8,6 +8,8 @@ namespace FusionMultiplayer.UI
     public sealed class MatchTimerHud : MonoBehaviour
     {
         private TMP_Text _timerText;
+        private int _lastTotalSeconds = int.MinValue;
+        private bool _wasActive;
 
         private void Awake()
         {
@@ -52,12 +54,27 @@ namespace FusionMultiplayer.UI
 
             if (!GameSceneReadiness.TryGetGameManager(out var gm) || !gm.TryGetMatchRemaining(out var seconds))
             {
-                _timerText.gameObject.SetActive(false);
+                if (_wasActive)
+                {
+                    _timerText.gameObject.SetActive(false);
+                    _wasActive = false;
+                    _lastTotalSeconds = int.MinValue;
+                }
+
                 return;
             }
 
-            _timerText.gameObject.SetActive(true);
+            if (!_wasActive)
+            {
+                _timerText.gameObject.SetActive(true);
+                _wasActive = true;
+            }
+
             var total = Mathf.CeilToInt(seconds);
+            if (total == _lastTotalSeconds)
+                return;
+
+            _lastTotalSeconds = total;
             var minutes = total / 60;
             var secs = total % 60;
             _timerText.text = $"{minutes}:{secs:00}";

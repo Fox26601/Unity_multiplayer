@@ -14,12 +14,20 @@ namespace FusionMultiplayer.UI
         [SerializeField] private TMP_Text _ownerLabel;
         [SerializeField] private Image _background;
 
+        private PlayerRef _lastOwner = PlayerRef.None;
+        private string _lastNick;
+        private Color _lastTint;
+        private bool _lastLocalLocked;
+        private bool _lastIsLocal;
+        private bool _hasVisualCache;
+
         public int SlotIndex => _slotIndex;
 
         public void Configure(CharacterSelectUI ui, int slotIndex)
         {
             _ui = ui;
             _slotIndex = slotIndex;
+            _hasVisualCache = false;
         }
 
         public void BindLabels(TMP_Text numberLabel, TMP_Text ownerLabel, Image background)
@@ -27,11 +35,27 @@ namespace FusionMultiplayer.UI
             _numberLabel = numberLabel;
             _ownerLabel = ownerLabel;
             _background = background;
+            _hasVisualCache = false;
         }
 
         public void RefreshVisual(PlayerRef owner, string ownerNick, Color ownerTint, bool localLocked,
             bool isLocalPlayer)
         {
+            if (_hasVisualCache &&
+                owner == _lastOwner &&
+                ownerNick == _lastNick &&
+                ownerTint == _lastTint &&
+                localLocked == _lastLocalLocked &&
+                isLocalPlayer == _lastIsLocal)
+                return;
+
+            _hasVisualCache = true;
+            _lastOwner = owner;
+            _lastNick = ownerNick;
+            _lastTint = ownerTint;
+            _lastLocalLocked = localLocked;
+            _lastIsLocal = isLocalPlayer;
+
             if (_numberLabel != null)
             {
                 _numberLabel.text = _slotIndex.ToString();

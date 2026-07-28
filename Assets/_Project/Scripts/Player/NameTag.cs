@@ -9,6 +9,8 @@ namespace FusionMultiplayer.Player
     public class NameTag : MonoBehaviour
     {
         private TextMesh _textMesh;
+        private Camera _cachedCamera;
+        private string _lastText;
 
         private void Awake()
         {
@@ -24,15 +26,21 @@ namespace FusionMultiplayer.Player
 
         private void LateUpdate()
         {
-            var cam = Camera.main;
-            if (cam == null) return;
-            transform.rotation = Quaternion.LookRotation(transform.position - cam.transform.position, Vector3.up);
+            if (_cachedCamera == null || !_cachedCamera.isActiveAndEnabled)
+                _cachedCamera = Camera.main;
+            if (_cachedCamera == null) return;
+            transform.rotation = Quaternion.LookRotation(transform.position - _cachedCamera.transform.position,
+                Vector3.up);
         }
 
         public void SetText(string value)
         {
+            value ??= string.Empty;
+            if (value == _lastText)
+                return;
+            _lastText = value;
             if (_textMesh == null) _textMesh = GetComponent<TextMesh>();
-            if (_textMesh != null) _textMesh.text = value ?? string.Empty;
+            if (_textMesh != null) _textMesh.text = value;
         }
     }
 }

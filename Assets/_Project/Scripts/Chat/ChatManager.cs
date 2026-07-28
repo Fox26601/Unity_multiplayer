@@ -113,17 +113,23 @@ namespace FusionMultiplayer.Chat
             return Color.white;
         }
 
-        [Rpc(RpcSources.All, RpcTargets.All)]
+        [Rpc(RpcSources.All, RpcTargets.All, HostMode = RpcHostMode.SourceIsHostPlayer)]
         private void RPC_Broadcast(NetworkString<_64> text, RpcInfo info = default)
         {
-            DeliverMessage(info.Source, text.ToString(), ResolveTint(info.Source), false, PlayerRef.None);
+            var sender = info.Source;
+            if (sender == PlayerRef.None)
+                sender = Runner.LocalPlayer;
+            DeliverMessage(sender, text.ToString(), ResolveTint(sender), false, PlayerRef.None);
         }
 
         /// <summary>Non-authority clients ask scene authority to fan out a whisper.</summary>
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
         private void RPC_RequestWhisper(PlayerRef recipient, NetworkString<_64> text, RpcInfo info = default)
         {
-            RPC_NotifyWhisper(recipient, info.Source, text);
+            var sender = info.Source;
+            if (sender == PlayerRef.None)
+                sender = Runner.LocalPlayer;
+            RPC_NotifyWhisper(recipient, sender, text);
         }
 
         /// <summary>Deliver PM to sender and recipient only (reliable in Shared Mode).</summary>

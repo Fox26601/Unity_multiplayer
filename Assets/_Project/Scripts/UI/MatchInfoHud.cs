@@ -15,6 +15,11 @@ namespace FusionMultiplayer.UI
         private TMP_Text _kdText;
         private TMP_Text _botText;
         private GameObject _root;
+        private string _lastMeta;
+        private string _lastEvent;
+        private int _lastScore = int.MinValue;
+        private int _lastDeaths = int.MinValue;
+        private bool _lastBot;
 
         private void Awake()
         {
@@ -71,9 +76,13 @@ namespace FusionMultiplayer.UI
             var text = go.GetComponent<TMP_Text>();
             text.alignment = TextAlignmentOptions.Center;
             text.fontSize = UiTypography.ChatMetaCompact;
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 14f;
+            text.fontSizeMax = UiTypography.ChatMetaCompact;
             text.color = color;
             text.raycastTarget = false;
             text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.overflowMode = TextOverflowModes.Ellipsis;
             UiTypography.ApplyFontTo(text);
             return text;
         }
@@ -108,23 +117,49 @@ namespace FusionMultiplayer.UI
                     difficulty = SessionCatalog.GetDifficultyLabel(sessionDiff);
             }
 
-            _metaText.text = string.Format(UiCopy.MatchInfoMetaFormat, mode, map, difficulty);
-            _eventText.text = FormatMatchEvent(gm.MatchEventId);
+            var meta = string.Format(UiCopy.MatchInfoMetaFormat, mode, map, difficulty);
+            if (meta != _lastMeta)
+            {
+                _lastMeta = meta;
+                _metaText.text = meta;
+            }
+
+            var eventLabel = FormatMatchEvent(gm.MatchEventId);
+            if (eventLabel != _lastEvent)
+            {
+                _lastEvent = eventLabel;
+                _eventText.text = eventLabel;
+            }
 
             PlayerData pd = null;
             var showKd = SessionRuntime.AllowsShoot && LocalPlayerHudCache.TryGetLocalPlayerData(out pd);
             if (showKd && pd != null)
             {
                 _kdText.gameObject.SetActive(true);
-                _kdText.text = string.Format(UiCopy.MatchInfoKdFormat, pd.Score, pd.Deaths);
+                if (pd.Score != _lastScore || pd.Deaths != _lastDeaths)
+                {
+                    _lastScore = pd.Score;
+                    _lastDeaths = pd.Deaths;
+                    _kdText.text = string.Format(UiCopy.MatchInfoKdFormat, pd.Score, pd.Deaths);
+                }
+
                 if (_botText != null)
-                    _botText.gameObject.SetActive(pd.IsBotControlled);
+                {
+                    var bot = (bool)pd.IsBotControlled;
+                    if (bot != _lastBot)
+                    {
+                        _lastBot = bot;
+                        _botText.gameObject.SetActive(bot);
+                    }
+                }
             }
             else
             {
                 _kdText.gameObject.SetActive(false);
                 if (_botText != null)
                     _botText.gameObject.SetActive(false);
+                _lastScore = int.MinValue;
+                _lastBot = false;
             }
         }
 

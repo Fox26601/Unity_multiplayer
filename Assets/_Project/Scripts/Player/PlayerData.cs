@@ -14,12 +14,18 @@ namespace FusionMultiplayer.Player
 
         [Networked] public NetworkString<_32> Nick { get; set; }
         [Networked] public Color Tint { get; set; }
-        [Networked] public int CharacterIndex { get; set; }
+        [Networked, OnChangedRender(nameof(OnCharacterIndexChanged))]
+        public int CharacterIndex { get; set; }
         [Networked] public int Score { get; set; }
         [Networked] public int Deaths { get; set; }
         [Networked] public int EndGameVote { get; set; }
         [Networked] public NetworkString<_64> ReconnectToken { get; set; }
         [Networked] public NetworkBool IsBotControlled { get; set; }
+
+        private void OnCharacterIndexChanged()
+        {
+            PlayerRegistry.NotifyCharacterIndexChanged(this);
+        }
 
         public override void Spawned()
         {
@@ -117,6 +123,32 @@ namespace FusionMultiplayer.Player
         private static bool IsNicknameTakenByOther(string requested, PlayerRef self) =>
             PlayerRegistry.IsNicknameTakenByOther(requested, self);
 
+        /// <summary>Client Leave: release this seat on the host (match phase unchanged).</summary>
+        [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        public void RpcNotifyIntentionalLeave(RpcInfo info = default)
+        {
+            if (!HasStateAuthority)
+                return;
+
+            var player = Object.InputAuthority;
+            if (player == PlayerRef.None && info.Source != PlayerRef.None)
+                player = info.Source;
+
+            ReconnectToken = default;
+            IsBotControlled = false;
+            PlayerRegistry.NotifyReconnectTokenChanged(this);
+
+            var slot = CharacterIndex;
+            CharacterIndex = -1;
+            PlayerRegistry.NotifyCharacterIndexChanged(this);
+
+            if (GameManager.Instance != null)
+                GameManager.Instance.ServerReleaseIntentionalLeaver(player, slot);
+
+            if (Object != null && Object.IsValid && Runner != null)
+                Runner.Despawn(Object);
+        }
+
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
         public void RpcRequestStartMatch()
         {
@@ -170,6 +202,7 @@ namespace FusionMultiplayer.Player
             Deaths = 0;
             CharacterIndex = -1;
             EndGameVote = NoEndGameVote;
+            PlayerRegistry.NotifyCharacterIndexChanged(this);
         }
 
         /// <summary>StateAuthority-only clear of end-game vote.</summary>

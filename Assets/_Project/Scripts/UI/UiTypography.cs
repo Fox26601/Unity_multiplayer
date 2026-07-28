@@ -382,9 +382,63 @@ namespace FusionMultiplayer.UI
                     continue;
                 }
 
-                if (go.name == "Subtitle" || go.name == "SessionStatus")
+                if (go.name == "Subtitle")
                 {
                     ApplySubtitle(text);
+                    continue;
+                }
+
+                if (go.name == "SessionStatus")
+                {
+                    text.fontSize = Caption;
+                    text.enableAutoSizing = true;
+                    text.fontSizeMin = 16f;
+                    text.fontSizeMax = 22f;
+                    text.fontStyle = FontStyles.Normal;
+                    text.alignment = TextAlignmentOptions.Center;
+                    text.textWrappingMode = TextWrappingModes.Normal;
+                    text.overflowMode = TextOverflowModes.Ellipsis;
+                    text.raycastTarget = false;
+                    continue;
+                }
+
+                if (go.name == "EmptyHint")
+                {
+                    text.fontSize = 18f;
+                    text.enableAutoSizing = true;
+                    text.fontSizeMin = 14f;
+                    text.fontSizeMax = 18f;
+                    text.color = UiTheme.TextSubtitle;
+                    text.alignment = TextAlignmentOptions.TopLeft;
+                    text.textWrappingMode = TextWrappingModes.Normal;
+                    text.overflowMode = TextOverflowModes.Ellipsis;
+                    text.raycastTarget = false;
+                    continue;
+                }
+
+                if (go.name == "PauseTitle")
+                {
+                    text.fontSize = 42f;
+                    text.fontStyle = FontStyles.Bold;
+                    text.color = UiTheme.TitleAccent;
+                    text.alignment = TextAlignmentOptions.Center;
+                    text.textWrappingMode = TextWrappingModes.NoWrap;
+                    text.overflowMode = TextOverflowModes.Ellipsis;
+                    text.raycastTarget = false;
+                    continue;
+                }
+
+                if (go.name == "PauseControls" || go.name == "Controls")
+                {
+                    text.fontSize = 18f;
+                    text.enableAutoSizing = true;
+                    text.fontSizeMin = 14f;
+                    text.fontSizeMax = 18f;
+                    text.color = UiTheme.TextSubtitle;
+                    text.alignment = TextAlignmentOptions.Center;
+                    text.textWrappingMode = TextWrappingModes.Normal;
+                    text.overflowMode = TextOverflowModes.Ellipsis;
+                    text.raycastTarget = false;
                     continue;
                 }
 
@@ -408,6 +462,18 @@ namespace FusionMultiplayer.UI
                         continue;
                     }
 
+                    // Pause menu buttons use compact labels inside a fixed 56px row.
+                    if ((parent.name is "BtnResume" or "BtnLeave") &&
+                        parent.parent != null && parent.parent.name == "Panel" &&
+                        parent.parent.parent != null && parent.parent.parent.name == "PauseOverlay")
+                    {
+                        text.fontSize = 28f;
+                        text.alignment = TextAlignmentOptions.Center;
+                        text.overflowMode = TextOverflowModes.Ellipsis;
+                        text.raycastTarget = false;
+                        continue;
+                    }
+
                     ApplyButtonLabel(text);
                     continue;
                 }
@@ -426,6 +492,18 @@ namespace FusionMultiplayer.UI
                 {
                     case "PlayerList":
                         ApplyBody(text, TextAlignmentOptions.TopLeft);
+                        break;
+                    case "Meta":
+                    case "Event":
+                    case "KD":
+                    case "Bot":
+                        text.fontSize = ChatMetaCompact;
+                        text.enableAutoSizing = true;
+                        text.fontSizeMin = 14f;
+                        text.fontSizeMax = ChatMetaCompact;
+                        text.textWrappingMode = TextWrappingModes.NoWrap;
+                        text.overflowMode = TextOverflowModes.Ellipsis;
+                        text.raycastTarget = false;
                         break;
                     case "ChatLog":
                         ApplyChatLog(text);
@@ -501,9 +579,20 @@ namespace FusionMultiplayer.UI
                     continue;
                 }
 
-                if (go.name == "Subtitle" || go.name == "SessionStatus")
+                if (go.name == "Subtitle")
                 {
                     ApplyLegacySubtitle(text);
+                    continue;
+                }
+
+                if (go.name == "SessionStatus")
+                {
+                    text.fontSize = Caption;
+                    text.fontStyle = FontStyle.Normal;
+                    text.alignment = TextAnchor.MiddleCenter;
+                    text.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    text.verticalOverflow = VerticalWrapMode.Truncate;
+                    text.raycastTarget = false;
                     continue;
                 }
 

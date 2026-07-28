@@ -55,15 +55,14 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 
 ## G — Physics prop (animator deferred)
 
-1. During match, cyan physics spheres spawn periodically and bounce (`NetworkRigidbody3D` / `PhysicsProp`).
+1. During match, cyan physics spheres spawn periodically and bounce (`Networking.NetworkRigidbody3D` on `PhysicsProp`).
 2. NetworkMecanimAnimator — **not in this pass** (deferred).
 
 ## H — Database
 
-1. Finish a match (timer or End Game).
-2. Check `Application.persistentDataPath/fusion_match_stats.json`.
-3. Return to Main Menu — open **Leaderboard** → CAREER STATS modal shows rows (Close / Esc / click dim).
-4. Two clients with the same nickname: second is rejected, returned to Main Menu, and sees red status: nickname already taken (with the nickname).
+1. Finish a match (timer or End Game) — each peer writes `Application.persistentDataPath/fusion_match_stats.json` at game-over.
+2. Return to Main Menu — open **Leaderboard** → CAREER STATS modal shows rows (Close / Esc / click dim).
+3. Two clients with the same nickname: second is rejected, returned to Main Menu, and sees red status: nickname already taken (with the nickname).
 
 ## I — Dedicated server smoke
 
@@ -82,7 +81,9 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Build/Sandbox place/remove; Build: only placer removes own blocks
 - [ ] Started rooms not joinable (except known reconnect token)
 - [ ] Leave → Main Menu: cursor unlocked, buttons clickable
-- [ ] Leave clears reconnect store; force-quit keeps token → Reconnect works
+- [ ] Leave clears reconnect store + remints ConnectionToken; force-quit keeps token → Reconnect works
+- [ ] After Leave, Quick Join may show no open rooms if only STARTED soft-lock sessions remain — Create room works; stale-token join ghost does not
+- [ ] Second peer without token cannot Join STARTED (soft-lock preserved)
 - [ ] Career Leaderboard opens after a finished match; no `BOT …` rows
 - [ ] Duplicate nickname rejected with clear Main Menu error
 - [ ] Tools → Validate Setup / Validate UI (own Photon App Id)

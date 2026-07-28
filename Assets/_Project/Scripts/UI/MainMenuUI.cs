@@ -356,7 +356,7 @@ namespace FusionMultiplayer.UI
 
         private void OnRandomColor()
         {
-            SessionData.Tint = Random.ColorHSV(0f, 1f, 0.55f, 1f, 0.75f, 1f);
+            SessionData.Tint = UnityEngine.Random.ColorHSV(0f, 1f, 0.55f, 1f, 0.75f, 1f);
             UpdatePreview();
         }
 

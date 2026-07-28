@@ -30,9 +30,9 @@ namespace FusionMultiplayer.UI
         public const string ReconnectFailed =
             "Reconnect failed. The host may have left, or your session token is no longer valid.";
         public const string QuickJoinNoMatch =
-            "No open rooms match the selected mode / map / difficulty.";
+            "No open rooms match the selected mode / map / difficulty. After Leave, use Create room; Reconnect is only for force-quit.";
         public static string QuickJoinNoMatchDetail(string filters) =>
-            $"No open rooms match {filters}. On Join room, set the same mode/map/difficulty as the host.";
+            $"No open rooms match {filters}. After Leave use Create room or Join by name. Reconnect is only after force-quit; started matches are not quick-joinable.";
         public const string DisconnectNoticePrefix = "Disconnected: ";
         public const string DisconnectedByServer =
             "Disconnected by server (nickname taken or join refused). Change your nickname and try again.";
@@ -99,6 +99,8 @@ namespace FusionMultiplayer.UI
             "Not connected — return to the main menu and join a session.";
         public const string CharacterSelectWaitingForGame =
             "Connecting game systems… pick a slot again in a moment.";
+        public const string CharacterSelectRestoring =
+            "Restoring your character…";
         public const string CharacterSelectGameManagerTimeout =
             "Game systems did not connect in time. Leave to main menu and rejoin the room.";
         public static string CharacterSelectRequesting(int index) =>

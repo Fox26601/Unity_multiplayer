@@ -14,16 +14,20 @@ namespace FusionMultiplayer.Core
         public const int MaxCharacterSlots = SessionData.MaxPlayersCap;
 
         private static readonly Dictionary<PlayerRef, PlayerData> DataByPlayer = new();
+        private static readonly Dictionary<int, PlayerData> DataBySlot = new();
         private static readonly Dictionary<int, PlayerAvatar> AvatarBySlot = new();
         private static readonly Dictionary<PlayerRef, PlayerAvatar> AvatarByPlayer = new();
         private static readonly Dictionary<string, PlayerData> DataByToken = new();
 
         private static readonly HashSet<PlayerData> DataEnumSeen = new();
         private static readonly HashSet<PlayerAvatar> AvatarEnumSeen = new();
+        private static readonly List<PlayerData> DataScratch = new(16);
+        private static readonly List<PlayerAvatar> AvatarScratch = new(16);
         private static readonly List<PlayerRef> PlayerRefScratch = new(8);
         private static readonly List<string> StringScratch = new(8);
-        private static int _dataEnumDepth;
-        private static int _avatarEnumDepth;
+        private static readonly List<int> IntScratch = new(8);
+
+        private static float _nextRebuildAllowedTime;
 
         public static IEnumerable<PlayerData> AllPlayerData => EnumerateAllData();
         public static IEnumerable<PlayerAvatar> AllAvatars => EnumerateAllAvatars();
@@ -31,6 +35,7 @@ namespace FusionMultiplayer.Core
         public static void Clear()
         {
             DataByPlayer.Clear();
+            DataBySlot.Clear();
             AvatarBySlot.Clear();
             AvatarByPlayer.Clear();
             DataByToken.Clear();
@@ -45,12 +50,7 @@ namespace FusionMultiplayer.Core
             if (owner != PlayerRef.None)
                 DataByPlayer[owner] = data;
 
-            // Slot-based lookup for bot seats (InputAuthority cleared).
-            if (data.CharacterIndex >= 0 && data.CharacterIndex < MaxCharacterSlots)
-            {
-                // Keep by-token index for reconnect.
-            }
-
+            IndexDataSlot(data);
             RefreshTokenIndex(data);
         }
 
@@ -72,6 +72,16 @@ namespace FusionMultiplayer.Core
             }
 
             RegisterPlayerData(data);
+        }
+
+        public static void NotifyCharacterIndexChanged(PlayerData data)
+        {
+            if (data == null)
+                return;
+
+            RemoveDataSlotEntries(data);
+            if (IsValidData(data))
+                IndexDataSlot(data);
         }
 
         public static void NotifyReconnectTokenChanged(PlayerData data)
@@ -126,16 +136,16 @@ namespace FusionMultiplayer.Core
                 AvatarByPlayer.Remove(previousOwner);
             }
 
-            // Clear stale slot entries pointing at this avatar.
-            var staleSlots = new List<int>();
+            IntScratch.Clear();
             foreach (var kv in AvatarBySlot)
             {
                 if (kv.Value == avatar && kv.Key != avatar.CharacterSlot)
-                    staleSlots.Add(kv.Key);
+                    IntScratch.Add(kv.Key);
             }
 
-            for (var i = 0; i < staleSlots.Count; i++)
-                AvatarBySlot.Remove(staleSlots[i]);
+            for (var i = 0; i < IntScratch.Count; i++)
+                AvatarBySlot.Remove(IntScratch[i]);
+            IntScratch.Clear();
 
             RegisterAvatar(avatar);
         }
@@ -148,8 +158,7 @@ namespace FusionMultiplayer.Core
             if (DataByPlayer.TryGetValue(player, out var data) && IsValidData(data))
                 return data;
 
-            // Fallback: rebuild from scene once (e.g. after domain quirks).
-            RebuildFromScene();
+            TryRebuildFromScene();
             return DataByPlayer.TryGetValue(player, out data) && IsValidData(data) ? data : null;
         }
 
@@ -158,20 +167,13 @@ namespace FusionMultiplayer.Core
             if (slot < 0 || slot >= MaxCharacterSlots)
                 return null;
 
-            foreach (var pd in EnumerateAllData())
-            {
-                if (pd.CharacterIndex == slot)
-                    return pd;
-            }
+            if (DataBySlot.TryGetValue(slot, out var data) && IsValidData(data) && data.CharacterIndex == slot)
+                return data;
 
-            RebuildFromScene();
-            foreach (var pd in EnumerateAllData())
-            {
-                if (pd.CharacterIndex == slot)
-                    return pd;
-            }
-
-            return null;
+            TryRebuildFromScene();
+            return DataBySlot.TryGetValue(slot, out data) && IsValidData(data) && data.CharacterIndex == slot
+                ? data
+                : null;
         }
 
         public static PlayerData FindPlayerDataByToken(string token)
@@ -183,7 +185,7 @@ namespace FusionMultiplayer.Core
                 data.ReconnectToken.ToString() == token)
                 return data;
 
-            RebuildFromScene();
+            TryRebuildFromScene();
             return DataByToken.TryGetValue(token, out data) && IsValidData(data) ? data : null;
         }
 
@@ -197,7 +199,7 @@ namespace FusionMultiplayer.Core
             if (AvatarByPlayer.TryGetValue(player, out var avatar) && IsValidAvatar(avatar))
                 return avatar;
 
-            RebuildFromScene();
+            TryRebuildFromScene();
             return AvatarByPlayer.TryGetValue(player, out avatar) && IsValidAvatar(avatar) ? avatar : null;
         }
 
@@ -210,52 +212,66 @@ namespace FusionMultiplayer.Core
                 avatar.CharacterSlot == slot)
                 return avatar;
 
-            RebuildFromScene();
+            TryRebuildFromScene();
             return AvatarBySlot.TryGetValue(slot, out avatar) && IsValidAvatar(avatar) ? avatar : null;
         }
 
-        public static IEnumerable<PlayerData> EnumerateAllData()
+        /// <summary>Fills recycled buffer; nested callers get a fresh list.</summary>
+        public static List<PlayerData> CopyAllData()
         {
-            if (_dataEnumDepth > 0)
-                return BuildDataSnapshot(new List<PlayerData>(DataByPlayer.Count + DataByToken.Count),
+            if (_dataCopyDepth > 0)
+                return FillDataSnapshot(new List<PlayerData>(DataByPlayer.Count + DataByToken.Count + DataBySlot.Count),
                     new HashSet<PlayerData>());
 
-            _dataEnumDepth++;
+            _dataCopyDepth++;
             try
             {
-                return BuildDataSnapshot(new List<PlayerData>(DataByPlayer.Count + DataByToken.Count),
-                    DataEnumSeen);
+                return FillDataSnapshot(DataScratch, DataEnumSeen);
             }
             finally
             {
-                _dataEnumDepth--;
+                _dataCopyDepth--;
             }
         }
 
-        public static IEnumerable<PlayerAvatar> EnumerateAllAvatars()
+        /// <summary>Fills recycled buffer; nested callers get a fresh list.</summary>
+        public static List<PlayerAvatar> CopyAllAvatars()
         {
-            if (_avatarEnumDepth > 0)
-                return BuildAvatarSnapshot(new List<PlayerAvatar>(AvatarBySlot.Count + AvatarByPlayer.Count),
+            if (_avatarCopyDepth > 0)
+                return FillAvatarSnapshot(new List<PlayerAvatar>(AvatarBySlot.Count + AvatarByPlayer.Count),
                     new HashSet<PlayerAvatar>());
 
-            _avatarEnumDepth++;
+            _avatarCopyDepth++;
             try
             {
-                return BuildAvatarSnapshot(new List<PlayerAvatar>(AvatarBySlot.Count + AvatarByPlayer.Count),
-                    AvatarEnumSeen);
+                return FillAvatarSnapshot(AvatarScratch, AvatarEnumSeen);
             }
             finally
             {
-                _avatarEnumDepth--;
+                _avatarCopyDepth--;
             }
         }
 
-        private static List<PlayerData> BuildDataSnapshot(List<PlayerData> snapshot, HashSet<PlayerData> seen)
+        public static IEnumerable<PlayerData> EnumerateAllData() => CopyAllData();
+
+        public static IEnumerable<PlayerAvatar> EnumerateAllAvatars() => CopyAllAvatars();
+
+        private static int _dataCopyDepth;
+        private static int _avatarCopyDepth;
+
+        private static List<PlayerData> FillDataSnapshot(List<PlayerData> snapshot, HashSet<PlayerData> seen)
         {
             snapshot.Clear();
             seen.Clear();
 
             foreach (var pd in DataByPlayer.Values)
+            {
+                if (!IsValidData(pd) || !seen.Add(pd))
+                    continue;
+                snapshot.Add(pd);
+            }
+
+            foreach (var pd in DataBySlot.Values)
             {
                 if (!IsValidData(pd) || !seen.Add(pd))
                     continue;
@@ -272,7 +288,7 @@ namespace FusionMultiplayer.Core
             return snapshot;
         }
 
-        private static List<PlayerAvatar> BuildAvatarSnapshot(List<PlayerAvatar> snapshot, HashSet<PlayerAvatar> seen)
+        private static List<PlayerAvatar> FillAvatarSnapshot(List<PlayerAvatar> snapshot, HashSet<PlayerAvatar> seen)
         {
             snapshot.Clear();
             seen.Clear();
@@ -302,8 +318,10 @@ namespace FusionMultiplayer.Core
             var canonical = requested.Trim();
             EnsurePopulated();
 
-            foreach (var other in EnumerateAllData())
+            var list = CopyAllData();
+            for (var i = 0; i < list.Count; i++)
             {
+                var other = list[i];
                 if (other.IsBotControlled)
                     continue;
 
@@ -319,12 +337,31 @@ namespace FusionMultiplayer.Core
             return false;
         }
 
+        private static void IndexDataSlot(PlayerData data)
+        {
+            if (data.CharacterIndex >= 0 && data.CharacterIndex < MaxCharacterSlots)
+                DataBySlot[data.CharacterIndex] = data;
+        }
+
+        private static void RemoveDataSlotEntries(PlayerData data)
+        {
+            IntScratch.Clear();
+            foreach (var kv in DataBySlot)
+            {
+                if (kv.Value == data)
+                    IntScratch.Add(kv.Key);
+            }
+
+            for (var i = 0; i < IntScratch.Count; i++)
+                DataBySlot.Remove(IntScratch[i]);
+            IntScratch.Clear();
+        }
+
         private static void RefreshTokenIndex(PlayerData data)
         {
             if (data == null)
                 return;
 
-            // Remove stale token entries pointing at this instance.
             StringScratch.Clear();
             foreach (var kv in DataByToken)
             {
@@ -357,6 +394,8 @@ namespace FusionMultiplayer.Core
                 DataByPlayer.Remove(PlayerRefScratch[i]);
             PlayerRefScratch.Clear();
 
+            RemoveDataSlotEntries(data);
+
             StringScratch.Clear();
             foreach (var kv in DataByToken)
             {
@@ -371,14 +410,24 @@ namespace FusionMultiplayer.Core
 
         private static void EnsurePopulated()
         {
-            if (DataByPlayer.Count > 0 || DataByToken.Count > 0 || AvatarBySlot.Count > 0)
+            if (DataByPlayer.Count > 0 || DataByToken.Count > 0 || DataBySlot.Count > 0 || AvatarBySlot.Count > 0)
                 return;
+            TryRebuildFromScene(force: true);
+        }
+
+        private static void TryRebuildFromScene(bool force = false)
+        {
+            if (!force && Time.unscaledTime < _nextRebuildAllowedTime)
+                return;
+
+            _nextRebuildAllowedTime = Time.unscaledTime + 1f;
             RebuildFromScene();
         }
 
         private static void RebuildFromScene()
         {
             DataByPlayer.Clear();
+            DataBySlot.Clear();
             AvatarBySlot.Clear();
             AvatarByPlayer.Clear();
             DataByToken.Clear();

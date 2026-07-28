@@ -47,6 +47,7 @@ namespace FusionMultiplayer.Core
         private readonly PlayerRef[] _lastOwners = new PlayerRef[PlayerRegistry.MaxCharacterSlots];
         private bool _ownersSnapshotReady;
         private TickTimer _physicsPropTimer;
+        private bool _physicsPropsArmed;
         private GameManagerRunnerCallbacks _runnerCallbacks;
 
         public NetworkObject PlayerAvatarPrefab => _playerAvatarPrefab;
@@ -160,7 +161,8 @@ namespace FusionMultiplayer.Core
                 VoteTimer = default;
                 // Server random decision #2: match event / weather.
                 MatchEventId = Random.Range(0, 3);
-                _physicsPropTimer = TickTimer.CreateFromSeconds(Runner, Random.Range(12f, 22f));
+                _physicsPropsArmed = false;
+                _physicsPropTimer = default;
                 EnsurePhysicsPropPrefab();
             }
 
@@ -182,11 +184,38 @@ namespace FusionMultiplayer.Core
             if (IsGameOver && !VoteResolved)
                 TryResolveVotes();
 
-            if (!IsGameOver && _physicsPropTimer.ExpiredOrNotRunning(Runner))
+            if (!IsGameOver)
+                TickPhysicsPropSpawns();
+        }
+
+        private void TickPhysicsPropSpawns()
+        {
+            if (!_physicsPropsArmed)
             {
-                TrySpawnPhysicsProp();
-                _physicsPropTimer = TickTimer.CreateFromSeconds(Runner, Random.Range(18f, 30f));
+                if (!HasAnyCharacterOccupied())
+                    return;
+
+                _physicsPropsArmed = true;
+                _physicsPropTimer = TickTimer.CreateFromSeconds(Runner, Random.Range(20f, 35f));
+                return;
             }
+
+            if (!_physicsPropTimer.Expired(Runner))
+                return;
+
+            TrySpawnPhysicsProp();
+            _physicsPropTimer = TickTimer.CreateFromSeconds(Runner, Random.Range(18f, 30f));
+        }
+
+        private bool HasAnyCharacterOccupied()
+        {
+            for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
+            {
+                if (CharacterOwners.Get(i) != PlayerRef.None)
+                    return true;
+            }
+
+            return false;
         }
 
         public void AfterHostMigration()
@@ -257,7 +286,7 @@ namespace FusionMultiplayer.Core
             RPC_SubmitMatchConfigJson(clipped);
         }
 
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
         private void RPC_SubmitMatchConfigJson(NetworkString<_512> jsonPayload, RpcInfo info = default)
         {
             if (!HasStateAuthority)
@@ -272,18 +301,24 @@ namespace FusionMultiplayer.Core
                 return;
             }
 
+            var source = info.Source;
+            if (source == PlayerRef.None)
+                source = Runner.LocalPlayer;
+
             // Reclaim only when JSON token matches this peer's ConnectionToken.
-            if (!string.IsNullOrWhiteSpace(dto.PlayerToken) &&
-                SessionReconnectTokens.TryReadPlayerToken(Runner, info.Source, out var joinToken) &&
+            if (source != PlayerRef.None &&
+                !string.IsNullOrWhiteSpace(dto.PlayerToken) &&
+                SessionReconnectTokens.TryReadPlayerToken(Runner, source, out var joinToken) &&
                 string.Equals(joinToken, dto.PlayerToken.Trim(), System.StringComparison.Ordinal))
             {
-                TryRestoreReconnect(info.Source, joinToken);
+                TryRestoreReconnect(source, joinToken);
             }
 
             Debug.Log(
-                $"[FusionMultiplayer] Deserialized MatchConfigDto from {info.Source}: room={dto.RoomName}, max={dto.MaxPlayers}, mode={dto.GameMode}, map={dto.Map}, diff={dto.Difficulty}, nick={dto.Nickname}");
+                $"[FusionMultiplayer] Deserialized MatchConfigDto from {source}: room={dto.RoomName}, max={dto.MaxPlayers}, mode={dto.GameMode}, map={dto.Map}, diff={dto.Difficulty}, nick={dto.Nickname}");
 
-            RPC_AckMatchConfigJson(info.Source, json.Length, dto.MaxPlayers, dto.Difficulty);
+            if (source != PlayerRef.None)
+                RPC_AckMatchConfigJson(source, json.Length, dto.MaxPlayers, dto.Difficulty);
         }
 
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -297,13 +332,16 @@ namespace FusionMultiplayer.Core
                 $"[FusionMultiplayer] MatchConfig JSON ack: len={jsonLength}, maxPlayers={maxPlayers}, difficulty={difficulty}");
         }
 
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
         private void RPC_RequestCharacter(int index, RpcInfo info = default)
         {
             if (!CanMutateSlots || !HasStateAuthority) return;
             if (index < 0 || index >= PlayerRegistry.MaxCharacterSlots) return;
 
+            // HostMode default is SourceIsServer → Host Source is None; treat as LocalPlayer.
             var requester = info.Source;
+            if (requester == PlayerRef.None)
+                requester = Runner.LocalPlayer;
             if (requester == PlayerRef.None)
                 return;
 
@@ -348,6 +386,7 @@ namespace FusionMultiplayer.Core
             if (pd != null && pd.HasStateAuthority)
             {
                 pd.CharacterIndex = index;
+                PlayerRegistry.NotifyCharacterIndexChanged(pd);
                 PlayerRegistry.RegisterPlayerData(pd);
             }
 
@@ -387,6 +426,35 @@ namespace FusionMultiplayer.Core
                 CharacterOwners.Set(index, PlayerRef.None);
         }
 
+        /// <summary>Free character slot and despawn avatar for a player who left via menu.</summary>
+        public void ServerReleaseIntentionalLeaver(PlayerRef player, int characterSlot)
+        {
+            if (!HasStateAuthority || Runner == null)
+                return;
+
+            if (player != PlayerRef.None)
+                ClearSlotsForPlayer(player);
+            if (characterSlot >= 0)
+                ReleaseCharacterSlot(characterSlot, player);
+
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
+            {
+                if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
+                    continue;
+
+                var matchPlayer = player != PlayerRef.None && avatar.Object.InputAuthority == player;
+                var matchSlot = characterSlot >= 0 && avatar.CharacterSlot == characterSlot;
+                if (!matchPlayer && !matchSlot)
+                    continue;
+
+                var brain = avatar.GetComponent<BotBrain>();
+                if (brain != null)
+                    brain.Deactivate();
+
+                Runner.Despawn(avatar.Object);
+            }
+        }
+
         public void MasterSetGameOver()
         {
             if (!CanMutateSlots || !HasStateAuthority)
@@ -399,7 +467,6 @@ namespace FusionMultiplayer.Core
             VoteResolved = false;
             VoteTimer = TickTimer.CreateFromSeconds(Runner, VoteDurationSeconds);
             ResetAllEndGameVotes();
-            MatchStatsDatabase.WriteMatchResults();
             RpcBroadcastGameOver();
         }
 
@@ -407,6 +474,7 @@ namespace FusionMultiplayer.Core
         private void RpcBroadcastGameOver()
         {
             GameOverBridge.NotifyStateChanged(true);
+            MatchStatsDatabase.WriteMatchResults();
         }
 
         /// <summary>Server random decision #3: critical hit roll.</summary>
@@ -510,6 +578,9 @@ namespace FusionMultiplayer.Core
         {
             for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
                 CharacterOwners.Set(i, PlayerRef.None);
+
+            _physicsPropsArmed = false;
+            _physicsPropTimer = default;
 
             foreach (var pd in PlayerRegistry.EnumerateAllData())
             {

@@ -36,15 +36,7 @@ namespace FusionMultiplayer.UI
             _panelRoot = panelRoot;
             _statusLegacy = null;
 
-            // Keep spawn state across runtime UI rebinds.
-            var alreadySpawned = _hasSpawnedAvatar || HasLocalSpawnedAvatar();
-            if (alreadySpawned)
-            {
-                _hasSpawnedAvatar = true;
-                if (_panelRoot != null)
-                    _panelRoot.SetActive(false);
-            }
-            else
+            if (!TryAdoptExistingSpawn())
             {
                 _hasSpawnedAvatar = false;
                 _pendingSlot = -1;
@@ -56,17 +48,100 @@ namespace FusionMultiplayer.UI
             StartGameManagerWatch();
         }
 
-        private static bool HasLocalSpawnedAvatar()
+        private bool TryAdoptExistingSpawn()
         {
-            if (LocalPlayerHudCache.TryGetLocalAvatar(out _))
+            if (_hasSpawnedAvatar)
+            {
+                HidePanel();
                 return true;
+            }
 
-            var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
-            if (runner == null || !runner.IsRunning || runner.LocalPlayer == PlayerRef.None)
+            if (!TryResolveExistingSeat(out var slotIndex, out var hasAvatar))
                 return false;
 
-            return PlayerRegistry.FindAvatar(runner.LocalPlayer) != null;
+            MarkSpawnedWithoutRequest(slotIndex, hasAvatar);
+            return true;
         }
+
+        private static bool TryResolveExistingSeat(out int slotIndex, out bool hasAvatar)
+        {
+            slotIndex = -1;
+            hasAvatar = false;
+
+            if (LocalPlayerHudCache.TryGetLocalAvatar(out var cached) && cached != null)
+            {
+                slotIndex = cached.CharacterSlot;
+                hasAvatar = true;
+                return true;
+            }
+
+            var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
+            if (runner == null || !runner.IsRunning)
+                return false;
+
+            var local = runner.LocalPlayer;
+            if (local != PlayerRef.None)
+            {
+                var avatar = PlayerRegistry.FindAvatar(local) ?? PlayerOwnership.FindAvatar(local);
+                if (avatar != null)
+                {
+                    slotIndex = avatar.CharacterSlot;
+                    hasAvatar = true;
+                    return true;
+                }
+
+                var pd = PlayerRegistry.FindPlayerData(local);
+                if (pd != null && pd.CharacterIndex >= 0)
+                {
+                    slotIndex = pd.CharacterIndex;
+                    hasAvatar = PlayerRegistry.FindAvatarBySlot(slotIndex) != null;
+                    return true;
+                }
+            }
+
+            var token = SessionData.ReconnectToken;
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            var byToken = PlayerRegistry.FindPlayerDataByToken(token);
+            if (byToken == null || byToken.CharacterIndex < 0)
+                return false;
+
+            slotIndex = byToken.CharacterIndex;
+            hasAvatar = PlayerRegistry.FindAvatarBySlot(slotIndex) != null ||
+                        PlayerOwnership.FindAvatarBySlot(slotIndex) != null;
+            return true;
+        }
+
+        private void MarkSpawnedWithoutRequest(int slotIndex, bool hasAvatar)
+        {
+            _pendingSlot = -1;
+            _hasSpawnedAvatar = true;
+            _retryPendingWhenGmReady = false;
+            HidePanel();
+
+            if (hasAvatar)
+            {
+                SetStatusText(UiCopy.CharacterSpawned);
+                if (slotIndex >= 0)
+                    ShowSpawnBanner(slotIndex);
+                GameplayInputMode.SetGameplay();
+            }
+            else
+            {
+                SetStatusText(UiCopy.CharacterSelectRestoring);
+                GameplayInputMode.SetMenu();
+            }
+        }
+
+        private void HidePanel()
+        {
+            if (_panelRoot != null)
+                _panelRoot.SetActive(false);
+        }
+
+        private static bool HasLocalSpawnedAvatar() =>
+            TryResolveExistingSeat(out _, out var hasAvatar) && hasAvatar;
 
         private void Awake()
         {
@@ -103,7 +178,9 @@ namespace FusionMultiplayer.UI
             GameSceneReadiness.GameManagerReady += OnGameManagerReady;
             ConnectionManager.SceneLoaded += OnSceneLoaded;
             GameSceneReadiness.EnsureSubscribed();
-            GameplayInputMode.SetMenu();
+            TryAdoptExistingSpawn();
+            if (!_hasSpawnedAvatar)
+                GameplayInputMode.SetMenu();
             StartGameManagerWatch();
         }
 
@@ -120,7 +197,8 @@ namespace FusionMultiplayer.UI
         {
             GameUiRuntimeRebuild.EnsureBuilt(transform);
             ResolveRefs();
-            if (string.IsNullOrWhiteSpace(GetStatusText()))
+            TryAdoptExistingSpawn();
+            if (!_hasSpawnedAvatar && string.IsNullOrWhiteSpace(GetStatusText()))
                 SetStatusText(UiCopy.CharacterSelectPrompt);
             RefreshAllSlots();
             StartGameManagerWatch();
@@ -128,11 +206,17 @@ namespace FusionMultiplayer.UI
 
         private void Update()
         {
+            if (_hasSpawnedAvatar)
+                return;
+
             if (Time.unscaledTime < _nextSlotPollTime)
                 return;
 
             _nextSlotPollTime = Time.unscaledTime + 0.25f;
-            RefreshAllSlots();
+            TryAdoptExistingSpawn();
+            // Slot visuals come from CharacterSelectBridge.SlotsChanged; only adopt while waiting.
+            if (!_hasSpawnedAvatar)
+                RefreshAllSlots();
         }
 
         private void OnSceneLoaded(string sceneName)
@@ -147,6 +231,7 @@ namespace FusionMultiplayer.UI
         private void OnGameManagerReady(GameManager gm)
         {
             _gameManagerTimedOut = false;
+            TryAdoptExistingSpawn();
             RefreshAllSlots();
         }
 
@@ -156,7 +241,10 @@ namespace FusionMultiplayer.UI
                 return;
 
             if (GameSceneReadiness.IsGameManagerReady)
+            {
+                TryAdoptExistingSpawn();
                 return;
+            }
 
             _gameManagerWatchRunning = true;
             StartCoroutine(WaitForGameManagerReady());
@@ -184,10 +272,33 @@ namespace FusionMultiplayer.UI
 
         private void RefreshAllSlots()
         {
+            TryAdoptExistingSpawn();
+
             GameSceneReadiness.TryGetGameManager(out var gm);
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             var gmReady = gm != null;
             if (_characterButtons == null) return;
+
+            if (_hasSpawnedAvatar)
+            {
+                HidePanel();
+                // Promote "Restoring…" to gameplay once the body is visible.
+                if (HasLocalSpawnedAvatar() &&
+                    GetStatusText() == UiCopy.CharacterSelectRestoring)
+                {
+                    SetStatusText(UiCopy.CharacterSpawned);
+                    GameplayInputMode.SetGameplay();
+                }
+
+                for (var i = 0; i < _characterButtons.Length; i++)
+                {
+                    var btn = _characterButtons[i];
+                    if (btn == null) continue;
+                    btn.interactable = false;
+                }
+
+                return;
+            }
 
             if (runner != null && runner.IsRunning && !gmReady && !_hasSpawnedAvatar && _pendingSlot < 0 &&
                 !_gameManagerTimedOut)
@@ -244,6 +355,8 @@ namespace FusionMultiplayer.UI
         public void OnPickCharacter(int index)
         {
             if (_hasSpawnedAvatar || _gameManagerTimedOut) return;
+            if (TryAdoptExistingSpawn())
+                return;
 
             _pendingSlot = index;
             SetStatusText(UiCopy.CharacterSelectRequesting(index));
@@ -282,9 +395,10 @@ namespace FusionMultiplayer.UI
             // Server already spawned the avatar (Client-Server / Dedicated Server).
             _pendingSlot = -1;
             _hasSpawnedAvatar = true;
-            if (_panelRoot != null) _panelRoot.SetActive(false);
+            HidePanel();
             SetStatusText(UiCopy.CharacterSpawned);
             ShowSpawnBanner(index);
+            GameplayInputMode.SetGameplay();
         }
 
         private void OnRejected(int index)
@@ -356,38 +470,22 @@ namespace FusionMultiplayer.UI
         private static string ResolveOwnerNickname(PlayerRef owner)
         {
             if (owner == PlayerRef.None) return string.Empty;
-            foreach (var pd in PlayerRegistry.EnumerateAllData())
-            {
-                if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == owner)
-                    return pd.Nick.ToString();
-            }
-
-            return string.Empty;
+            var pd = PlayerRegistry.FindPlayerData(owner);
+            return pd != null ? pd.Nick.ToString() : string.Empty;
         }
 
         private static Color ResolveOwnerTint(PlayerRef owner)
         {
             if (owner == PlayerRef.None) return Color.white;
-            foreach (var pd in PlayerRegistry.EnumerateAllData())
-            {
-                if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == owner)
-                    return pd.Tint;
-            }
-
-            return new Color(0.45f, 0.55f, 0.75f, 1f);
+            var pd = PlayerRegistry.FindPlayerData(owner);
+            return pd != null ? pd.Tint : new Color(0.45f, 0.55f, 0.75f, 1f);
         }
 
         private static PlayerData FindLocalPlayerData()
         {
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             if (runner == null) return null;
-            foreach (var pd in PlayerRegistry.EnumerateAllData())
-            {
-                if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
-                    return pd;
-            }
-
-            return null;
+            return PlayerRegistry.FindPlayerData(runner.LocalPlayer);
         }
     }
 }

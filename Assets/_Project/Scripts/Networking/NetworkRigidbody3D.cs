@@ -4,8 +4,7 @@ using UnityEngine;
 namespace FusionMultiplayer.Networking
 {
     /// <summary>
-    /// Server-authoritative 3D rigidbody sync (Fusion Physics addon stand-in for this project).
-    /// Uses a real Unity Rigidbody and replicates pose/velocity to proxies.
+    /// Server-authoritative 3D rigidbody pose/velocity sync for PhysicsProp.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     [DisallowMultipleComponent]

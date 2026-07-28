@@ -28,12 +28,18 @@ namespace FusionMultiplayer.Player
         [SerializeField] private Renderer _bodyRenderer;
         [SerializeField] private NameTag _nameTag;
 
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
         private Color _baseTint = Color.white;
+        private Color _appliedTint;
         private float _hitFlashUntil;
         private Renderer[] _visualRenderers;
         private Collider[] _hitColliders;
         private CharacterController _characterController;
         private bool _corpseVisible = true;
+        private MaterialPropertyBlock _mpb;
+        private string _lastNameTag;
 
         public bool IsAlive => !IsDead && Health > 0f;
 
@@ -90,6 +96,10 @@ namespace FusionMultiplayer.Player
                 _nameTag.gameObject.SetActive(!HasInputAuthority && !IsDead);
 
             _baseTint = VisualTint;
+            _appliedTint = new Color(-1f, -1f, -1f, -1f);
+            _lastNameTag = null;
+            if (_mpb == null)
+                _mpb = new MaterialPropertyBlock();
             SetCorpseVisible(!IsDead);
             PlayerRegistry.RegisterAvatar(this);
         }
@@ -208,8 +218,9 @@ namespace FusionMultiplayer.Player
                 }
             }
 
+            // Proxies: NT alone. Local IA keeps CC for prediction even without SA.
             if (_characterController != null)
-                _characterController.enabled = visible;
+                _characterController.enabled = visible && (HasStateAuthority || HasInputAuthority);
 
             if (_nameTag != null)
                 _nameTag.gameObject.SetActive(visible && !HasInputAuthority);
@@ -258,11 +269,28 @@ namespace FusionMultiplayer.Player
                 var tint = _baseTint;
                 if (Time.time < _hitFlashUntil)
                     tint = Color.Lerp(_baseTint, Color.red, 0.65f);
-                _bodyRenderer.material.color = tint;
+
+                if (tint != _appliedTint)
+                {
+                    _appliedTint = tint;
+                    if (_mpb == null)
+                        _mpb = new MaterialPropertyBlock();
+                    _bodyRenderer.GetPropertyBlock(_mpb);
+                    _mpb.SetColor(ColorId, tint);
+                    _mpb.SetColor(BaseColorId, tint);
+                    _bodyRenderer.SetPropertyBlock(_mpb);
+                }
             }
 
             if (_nameTag != null && !HasInputAuthority)
-                _nameTag.SetText(DisplayName.ToString());
+            {
+                var name = DisplayName.ToString();
+                if (name != _lastNameTag)
+                {
+                    _lastNameTag = name;
+                    _nameTag.SetText(name);
+                }
+            }
         }
 
         private void OnHitCountChanged()
@@ -271,23 +299,8 @@ namespace FusionMultiplayer.Player
                 return;
 
             _hitFlashUntil = Time.time + 0.18f;
-            SpawnLocalHitBurst();
-        }
-
-        private void SpawnLocalHitBurst()
-        {
-            var origin = _bodyRenderer != null && _bodyRenderer.enabled
-                ? _bodyRenderer.bounds.center
-                : transform.position + Vector3.up;
-            var burst = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            burst.name = "HitBurst";
-            burst.transform.position = origin;
-            burst.transform.localScale = Vector3.one * 0.35f;
-            Destroy(burst.GetComponent<Collider>());
-            var renderer = burst.GetComponent<Renderer>();
-            if (renderer != null)
-                renderer.material.color = new Color(1f, 0.35f, 0.2f, 0.85f);
-            Destroy(burst, 0.25f);
+            // Force tint re-apply next Render for hit flash (no CreatePrimitive alloc).
+            _appliedTint = new Color(-1f, -1f, -1f, -1f);
         }
 
         public override void Despawned(NetworkRunner runner, bool hasState)

@@ -6,9 +6,7 @@ using UnityEngine;
 
 namespace FusionMultiplayer.Core
 {
-    /// <summary>
-    /// Lightweight JSON file database for match stats (read + write on the server).
-    /// </summary>
+    /// <summary>Local JSON match stats (written on each peer at game-over).</summary>
     public static class MatchStatsDatabase
     {
         [Serializable]

@@ -77,7 +77,6 @@ namespace FusionMultiplayer.Core
         private void Update()
         {
             GameplayInput.AccumulateKeyEdges();
-            GameplayInput.AccumulateLook();
         }
 
         private void OnDestroy()
@@ -461,7 +460,10 @@ namespace FusionMultiplayer.Core
             GameplayInputMode.SetMenu();
 
             if (clearReconnect)
+            {
                 SessionReconnectStore.Clear();
+                SessionData.ClearReconnectToken();
+            }
 #if UNITY_EDITOR
             if (MppmUtility.IsMainInstance)
 #endif
@@ -471,6 +473,47 @@ namespace FusionMultiplayer.Core
             _sessionList.Clear();
             SceneManager.LoadScene(SceneIndices.MainMenu);
             GameplayInputMode.SetMenu();
+        }
+
+        /// <summary>Notify host, then shut down and return to Main Menu.</summary>
+        public async Task LeaveToMainMenuAsync()
+        {
+            await NotifyIntentionalLeaveAsync();
+            await ShutdownToMainMenuAsync(clearReconnect: true);
+        }
+
+        private async Task NotifyIntentionalLeaveAsync()
+        {
+            if (_runner == null || !_runner.IsRunning)
+                return;
+
+            var local = _runner.LocalPlayer;
+            if (local == PlayerRef.None)
+                return;
+
+            var pd = PlayerRegistry.FindPlayerData(local) ?? PlayerOwnership.FindPlayerData(local);
+            if (pd == null || !pd.Object || !pd.Object.IsValid)
+                return;
+
+            try
+            {
+                pd.RpcNotifyIntentionalLeave();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[FusionMultiplayer] Intentional leave RPC failed: {ex.Message}");
+                return;
+            }
+
+            var deadline = Time.realtimeSinceStartup + 0.5f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (pd == null || pd.Object == null || !pd.Object.IsValid)
+                    break;
+                await Task.Yield();
+            }
+
+            await Task.Delay(50);
         }
 
         /// <summary>Client: store error, leave session, reload Main Menu.</summary>
@@ -615,10 +658,20 @@ namespace FusionMultiplayer.Core
 
             if (NetworkAuthority.IsServerOrHost(runner))
             {
-                // Keep reconnect token indexed after Fusion clears InputAuthority.
                 var pd = PlayerOwnership.FindPlayerData(player);
-                if (pd != null)
-                    PlayerRegistry.NotifyReconnectTokenChanged(pd);
+                if (pd == null || pd.Object == null || !pd.Object.IsValid)
+                    return;
+
+                PlayerRegistry.NotifyReconnectTokenChanged(pd);
+                if (string.IsNullOrWhiteSpace(pd.ReconnectToken.ToString()))
+                    return;
+
+                if (pd.CharacterIndex < 0)
+                {
+                    var avatar = PlayerOwnership.FindAvatar(player);
+                    if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
+                        return;
+                }
 
                 BotTakeover.TryReplaceDisconnectedPlayer(runner, player);
             }

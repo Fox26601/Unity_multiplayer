@@ -11,7 +11,7 @@ namespace FusionMultiplayer.UI
     /// </summary>
     public static class MainMenuRuntimeRebuild
     {
-        private const int MenuBuildVersion = 23;
+        private const int MenuBuildVersion = 24;
         private const int MenuCompactText = 26;
         private const float FormLabelWidth = 168f;
         private const float LabelShareOfBlock = 0.32f;
@@ -195,14 +195,30 @@ namespace FusionMultiplayer.UI
             var joinMode = BuildFormDropdownRow(joinForm, "JoinGameModeSelector", UiCopy.GameModeLabel);
             var joinMap = BuildFormDropdownRow(joinForm, "JoinMapSelector", UiCopy.MapFilterLabel);
             var joinDifficulty = BuildFormDropdownRow(joinForm, "JoinDifficultySelector", UiCopy.DifficultyLabel);
-            var (listContent, emptyHint) = CreateSessionListScrollLayout(joinForm);
+            var emptyHint = CreateListStatusHint(joinForm, "EmptyHint", UiCopy.SessionBrowserLoading);
+            var listContent = CreateSessionListScrollLayout(joinForm);
             var (refresh, joinSession) = CreateJoinActionsRow(joinForm);
 
             LayoutRebuilder.ForceRebuildLayoutImmediate(createForm);
             LayoutRebuilder.ForceRebuildLayoutImmediate(joinForm);
 
-            CreateBandLabel(panel, "SessionStatus", string.Empty, UiTypography.Body, UiTheme.StatusOk,
-                FontStyles.Normal, 0.01f, 0.07f, TextAlignmentOptions.Center);
+            CreateBandLabel(panel, "SessionStatus", string.Empty, UiTypography.Caption, UiTheme.StatusOk,
+                FontStyles.Normal, 0.0f, 0.075f, TextAlignmentOptions.Center);
+            var sessionStatus = panel.Find("SessionStatus");
+            if (sessionStatus != null)
+            {
+                if (sessionStatus.GetComponent<RectMask2D>() == null)
+                    sessionStatus.gameObject.AddComponent<RectMask2D>();
+                var statusTmp = sessionStatus.GetComponent<TMP_Text>();
+                if (statusTmp != null)
+                {
+                    statusTmp.enableAutoSizing = true;
+                    statusTmp.fontSizeMin = 16f;
+                    statusTmp.fontSizeMax = 22f;
+                    statusTmp.textWrappingMode = TextWrappingModes.Normal;
+                    statusTmp.overflowMode = TextOverflowModes.Ellipsis;
+                }
+            }
 
             var browser = menu.GetComponent<SessionBrowserUI>();
             if (browser == null)
@@ -633,7 +649,29 @@ namespace FusionMultiplayer.UI
             return toggle;
         }
 
-        private static (Transform listContent, TMP_Text emptyHint) CreateSessionListScrollLayout(Transform formRoot)
+        private static TMP_Text CreateListStatusHint(Transform formRoot, string name, string text)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI),
+                typeof(LayoutElement));
+            go.transform.SetParent(formRoot, false);
+            UiRuntimeBuildKit.ConfigureVerticalLayoutChild(go, 52f);
+
+            var label = go.GetComponent<TMP_Text>();
+            if (_tmpFont != null) label.font = _tmpFont;
+            label.text = text;
+            label.fontSize = 18f;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 14f;
+            label.fontSizeMax = 18f;
+            label.color = UiTheme.TextSubtitle;
+            label.alignment = TextAlignmentOptions.TopLeft;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.raycastTarget = false;
+            return label;
+        }
+
+        private static Transform CreateSessionListScrollLayout(Transform formRoot)
         {
             var scrollGo = new GameObject("SessionListScroll", typeof(RectTransform), typeof(CanvasRenderer),
                 typeof(Image), typeof(ScrollRect), typeof(LayoutElement));
@@ -676,20 +714,7 @@ namespace FusionMultiplayer.UI
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
 
-            var emptyGo = new GameObject("EmptyHint", typeof(RectTransform), typeof(CanvasRenderer),
-                typeof(TextMeshProUGUI));
-            emptyGo.transform.SetParent(scrollGo.transform, false);
-            Stretch(emptyGo.GetComponent<RectTransform>(), 12f, 12f);
-            var emptyHint = emptyGo.GetComponent<TMP_Text>();
-            if (_tmpFont != null) emptyHint.font = _tmpFont;
-            emptyHint.text = UiCopy.SessionBrowserLoading;
-            emptyHint.fontSize = MenuCompactText;
-            emptyHint.color = UiTheme.TextSubtitle;
-            emptyHint.alignment = TextAlignmentOptions.TopLeft;
-            emptyHint.textWrappingMode = TextWrappingModes.Normal;
-            emptyHint.overflowMode = TextOverflowModes.Ellipsis;
-
-            return (contentGo.transform, emptyHint);
+            return contentGo.transform;
         }
 
         private static (Button refresh, Button join) CreateJoinActionsRow(Transform formRoot)

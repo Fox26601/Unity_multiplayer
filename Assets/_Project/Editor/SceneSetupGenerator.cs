@@ -147,8 +147,7 @@ namespace FusionMultiplayer.EditorTools
             {
                 $"{ScenesPath}/02_Game_Arena.unity",
                 $"{ScenesPath}/03_Game_Plaza.unity",
-                $"{ScenesPath}/04_Game_Ruins.unity",
-                $"{ScenesPath}/02_Game.unity"
+                $"{ScenesPath}/04_Game_Ruins.unity"
             };
 
             foreach (var path in mapScenes)

@@ -24,7 +24,7 @@ This repository **does not ship** the Photon Fusion binaries (license). Gameplay
 
 - **Main menu UI** lives only in **`Assets/_Project/Scenes/00_MainMenu.unity`** (`MainMenuCanvas` + `ConnectionManager`).
 - **Lobby UI** is in **`01_Lobby.unity`**.
-- **Game HUD** (character slots, chat, game over) is built at runtime on the map scenes (`02_Game_Arena` / `03_Game_Plaza` / `04_Game_Ruins`). Legacy orphan `02_Game.unity` is not in Build Settings.
+- **Game HUD** (character slots, chat, game over) is built at runtime on the map scenes (`02_Game_Arena` / `03_Game_Plaza` / `04_Game_Ruins`).
 - **Do not press Play on a lone game map** unless you are debugging the “no session” overlay: there is **no `ConnectionManager`** in those scenes, so Fusion never starts. Start from **`00_Boot`** / **`00_MainMenu`**, or set the editor **Play Mode Start Scene** (see below).
 
 ## Play Mode start scene (recommended)

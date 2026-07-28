@@ -10,7 +10,6 @@ namespace FusionMultiplayer.Player
         private static bool _removeEdgeQueued;
         private static bool _fireEdgeQueued;
         private static bool _jumpEdgeQueued;
-        private static Vector2 _lookAccumulator;
 
         /// <summary>Call every Unity frame before Fusion polls <see cref="Sample"/>.</summary>
         public static void AccumulateKeyEdges()
@@ -34,22 +33,6 @@ namespace FusionMultiplayer.Player
                 _fireEdgeQueued = true;
         }
 
-        /// <summary>Accumulate mouse look delta between Fusion ticks (~32 Hz).</summary>
-        public static void AccumulateLook()
-        {
-            if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen)
-                return;
-
-            if (Cursor.lockState != CursorLockMode.Locked)
-                return;
-
-            var mouse = Mouse.current;
-            if (mouse == null)
-                return;
-
-            _lookAccumulator += mouse.delta.ReadValue();
-        }
-
         /// <summary>Per-frame mouse delta for local Render (not drained into network input).</summary>
         public static bool TryReadLocalLookDelta(out Vector2 delta)
         {
@@ -70,6 +53,14 @@ namespace FusionMultiplayer.Player
         {
             AccumulateKeyEdges();
             data = default;
+
+            // Always publish absolute look so pause/menus do not snap SA facing to 0.
+            if (PlayerLook.TryGetLocalLook(out var yaw, out var pitch))
+            {
+                data.LookYaw = yaw;
+                data.LookPitch = pitch;
+            }
+
             if (!GameplayInputMode.IsGameplay || FusionMultiplayer.UI.PauseMenuUI.IsOpen)
                 return;
 
@@ -105,10 +96,6 @@ namespace FusionMultiplayer.Player
                 data.Buttons.Set(GameplayButton.Fire, true);
                 _fireEdgeQueued = false;
             }
-
-            data.LookDeltaX = _lookAccumulator.x;
-            data.LookDeltaY = _lookAccumulator.y;
-            _lookAccumulator = Vector2.zero;
         }
 
         private static float ReadHorizontal(Keyboard kb)

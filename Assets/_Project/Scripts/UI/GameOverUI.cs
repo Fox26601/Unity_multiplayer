@@ -22,6 +22,7 @@ namespace FusionMultiplayer.UI
         private Button[] _voteButtons;
         private bool _isGameOver;
         private bool _localVoteCast;
+        private float _nextVoteUiTime;
 
         private void Awake()
         {
@@ -282,7 +283,13 @@ namespace FusionMultiplayer.UI
             }
 
             if (_isGameOver)
-                RefreshVoteUi();
+            {
+                if (Time.unscaledTime >= _nextVoteUiTime)
+                {
+                    _nextVoteUiTime = Time.unscaledTime + 0.25f;
+                    RefreshVoteUi();
+                }
+            }
         }
 
         private void UpdateResultsTable()
@@ -407,7 +414,7 @@ namespace FusionMultiplayer.UI
         private async void OnLeaveClicked()
         {
             if (ConnectionManager.Instance != null)
-                await ConnectionManager.Instance.ShutdownToMainMenuAsync();
+                await ConnectionManager.Instance.LeaveToMainMenuAsync();
         }
     }
 }

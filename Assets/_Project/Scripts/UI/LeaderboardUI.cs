@@ -14,6 +14,7 @@ namespace FusionMultiplayer.UI
         [SerializeField] private GameObject _overlayRoot;
         [SerializeField] private TMP_Text _titleText;
         [SerializeField] private TMP_Text _tableText;
+        private float _nextRefreshTime;
 
         private void Awake()
         {
@@ -96,6 +97,10 @@ namespace FusionMultiplayer.UI
             if (!_overlayRoot.activeSelf)
                 _overlayRoot.SetActive(true);
 
+            if (Time.unscaledTime < _nextRefreshTime)
+                return;
+
+            _nextRefreshTime = Time.unscaledTime + 0.2f;
             var sb = new StringBuilder();
             var any = CombatScoreboardTable.AppendRows(sb, UiCopy.GameOverResultsHeader);
             _tableText.text = any ? sb.ToString() : UiCopy.GameOverNoScores;

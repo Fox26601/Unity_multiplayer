@@ -63,6 +63,12 @@ namespace FusionMultiplayer.Player
         private Vector3 _lastPosSample;
         private float _stuckSince = -1f;
         private bool _wasDead;
+        private Transform _cameraPivot;
+        private Vector3 _cachedSteerDir = Vector3.forward;
+        private float _nextSteerTime;
+        private float _nextJumpProbeTime;
+        private bool _cachedWantJump;
+        private int _simTick;
 
         public bool IsActive => _active;
 
@@ -75,6 +81,7 @@ namespace FusionMultiplayer.Player
             _weapon = GetComponent<PlayerWeapon>();
             _movement = GetComponent<PlayerMovement>();
             _ownColliders = GetComponentsInChildren<Collider>(true);
+            _cameraPivot = transform.Find("PlayerCamera");
             _active = true;
             _wasDead = _avatar != null && _avatar.IsDead;
             ResetMemory();
@@ -133,9 +140,17 @@ namespace FusionMultiplayer.Player
                 Think();
             }
 
+            _simTick++;
             var horizontal = ComputeHorizontalVelocity();
-            var wantJump = ShouldAutoJump(horizontal);
-            if (UpdateStuckTracker(out var recoveryHorizontal, out var recoveryJump))
+            var wantJump = false;
+            if (now >= _nextJumpProbeTime)
+            {
+                _nextJumpProbeTime = now + _thinkInterval;
+                _cachedWantJump = ShouldAutoJump(horizontal);
+            }
+
+            wantJump = _cachedWantJump;
+            if ((_simTick & 1) == 0 && UpdateStuckTracker(out var recoveryHorizontal, out var recoveryJump))
             {
                 horizontal = recoveryHorizontal;
                 wantJump = wantJump || recoveryJump;
@@ -241,11 +256,18 @@ namespace FusionMultiplayer.Player
             if (desired.sqrMagnitude < 0.04f)
                 return Vector3.zero;
 
-            var moveDir = ComputeSteerDir(desired.normalized);
-            if (moveDir.sqrMagnitude < 0.01f)
+            var desiredN = desired.normalized;
+            var now = SimulationNow();
+            if (now >= _nextSteerTime)
+            {
+                _nextSteerTime = now + Mathf.Max(0.08f, _thinkInterval * 0.4f);
+                _cachedSteerDir = ComputeSteerDir(desiredN);
+            }
+
+            if (_cachedSteerDir.sqrMagnitude < 0.01f)
                 return Vector3.zero;
 
-            return moveDir * speed;
+            return _cachedSteerDir * speed;
         }
 
         private bool ShouldAutoJump(Vector3 horizontalVelocity)
@@ -357,8 +379,10 @@ namespace FusionMultiplayer.Player
             bestDist = float.MaxValue;
             var maxSq = _detectRadius * _detectRadius;
 
-            foreach (var other in PlayerRegistry.EnumerateAllAvatars())
+            var list = PlayerRegistry.CopyAllAvatars();
+            for (var i = 0; i < list.Count; i++)
             {
+                var other = list[i];
                 if (other == _avatar || other.Object == null || !other.Object.IsValid || !other.IsAlive)
                     continue;
                 if (PlayerOwnership.ResolveLogicalOwner(other) == _originalOwner)
@@ -429,8 +453,9 @@ namespace FusionMultiplayer.Player
         private bool IsAimedAt(Vector3 worldPoint)
         {
             var eye = transform.position + Vector3.up * _eyeHeight;
-            var cam = transform.Find("PlayerCamera");
-            var forward = cam != null ? cam.forward : transform.forward;
+            if (_cameraPivot == null)
+                _cameraPivot = transform.Find("PlayerCamera");
+            var forward = _cameraPivot != null ? _cameraPivot.forward : transform.forward;
             var to = worldPoint - eye;
             if (to.sqrMagnitude < 0.01f)
                 return true;

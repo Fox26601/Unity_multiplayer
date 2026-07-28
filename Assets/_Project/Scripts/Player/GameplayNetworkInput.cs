@@ -7,8 +7,10 @@ namespace FusionMultiplayer.Player
     {
         public float MoveForward;
         public float Strafe;
-        public float LookDeltaX;
-        public float LookDeltaY;
+        /// <summary>Absolute body yaw (degrees) at sample time — avoids delta drift.</summary>
+        public float LookYaw;
+        /// <summary>Absolute camera pitch (degrees) at sample time.</summary>
+        public float LookPitch;
         public NetworkButtons Buttons;
     }
 

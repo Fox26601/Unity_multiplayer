@@ -79,6 +79,9 @@ namespace FusionMultiplayer.Core
                 ReconnectToken = token.Trim();
         }
 
+        /// <summary>Clears in-memory reconnect identity so the next join mints a new token.</summary>
+        public static void ClearReconnectToken() => ReconnectToken = null;
+
         public static void SetSessionError(string message) =>
             SessionError = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
 

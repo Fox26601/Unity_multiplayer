@@ -224,7 +224,7 @@ public static class FusionMultiplayerEditorMenus
         if (EditorSceneManager.playModeStartScene == null)
         {
             Debug.LogWarning(
-                "[FusionMultiplayer] Play Mode Start Scene is not set. Use Tools → Fusion Multiplayer → Use Main Menu As Play Mode Start Scene to avoid accidentally playing 02_Game alone.");
+                "[FusionMultiplayer] Play Mode Start Scene is not set. Use Tools → Fusion Multiplayer → Use Main Menu As Play Mode Start Scene to avoid accidentally playing a game map alone.");
         }
         else
         {

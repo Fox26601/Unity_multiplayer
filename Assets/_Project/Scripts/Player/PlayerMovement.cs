@@ -6,8 +6,10 @@ namespace FusionMultiplayer.Player
 {
     /// <summary>
     /// Minecraft-style locomotion: WASD + Space jump (apex ~1.5 tiles). Bots drive the same motor via SetBotMove.
+    /// StateAuthority is authoritative; InputAuthority without SA runs the same motor as local prediction.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
+    [DefaultExecutionOrder(0)]
     public class PlayerMovement : NetworkBehaviour
     {
         /// <summary>Jump apex height in world units (1.5 × <see cref="BuildGrid.TileSize"/>).</summary>
@@ -17,6 +19,7 @@ namespace FusionMultiplayer.Player
 
         private CharacterController _cc;
         private BotBrain _botBrain;
+        private PlayerAvatar _avatar;
         private float _verticalVelocity;
         private NetworkButtons _previousButtons;
 
@@ -24,37 +27,49 @@ namespace FusionMultiplayer.Player
         {
             _cc = GetComponent<CharacterController>();
             _botBrain = GetComponent<BotBrain>();
+            _avatar = GetComponent<PlayerAvatar>();
         }
 
         public override void FixedUpdateNetwork()
         {
-            if (!HasStateAuthority)
-                return;
-
-            var avatar = GetComponent<PlayerAvatar>();
-            if (avatar != null && !avatar.IsAlive)
+            if (_avatar != null && !_avatar.IsAlive)
             {
-                _verticalVelocity = 0f;
+                if (HasStateAuthority || HasInputAuthority)
+                    _verticalVelocity = 0f;
                 return;
             }
 
-            if (_botBrain == null)
-                _botBrain = GetComponent<BotBrain>();
-
-            if (_botBrain != null && _botBrain.IsActive)
+            if (HasStateAuthority)
             {
-                _botBrain.SimulationTick(this);
+                if (_botBrain == null)
+                    _botBrain = GetComponent<BotBrain>();
+
+                if (_botBrain != null && _botBrain.IsActive)
+                {
+                    _botBrain.SimulationTick(this);
+                    return;
+                }
+
+                ApplyInputMotor();
                 return;
             }
 
+            // Client prediction: same motor from local input; NetworkTransform reconciles to SA.
+            if (HasInputAuthority)
+                ApplyInputMotor();
+        }
+
+        private void ApplyInputMotor()
+        {
             if (!GetInput(out GameplayNetworkInput input))
             {
                 ApplyMotor(Vector3.zero, false);
                 return;
             }
 
-            var horizontal = transform.forward * (input.MoveForward * _moveSpeed)
-                             + transform.right * (input.Strafe * _moveSpeed);
+            var basis = Quaternion.Euler(0f, input.LookYaw, 0f);
+            var horizontal = basis * Vector3.forward * (input.MoveForward * _moveSpeed)
+                             + basis * Vector3.right * (input.Strafe * _moveSpeed);
             var wantJump = input.Buttons.WasPressed(_previousButtons, GameplayButton.Jump);
             _previousButtons = input.Buttons;
             ApplyMotor(horizontal, wantJump);

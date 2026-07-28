@@ -425,6 +425,9 @@ namespace FusionMultiplayer.UI
                 {
                     if (_emptyHint.text == UiCopy.SessionBrowserLoading)
                         _emptyHint.text = UiCopy.SessionBrowserEmpty;
+                    else if (string.IsNullOrWhiteSpace(_emptyHint.text) ||
+                             _emptyHint.text == UiCopy.SessionBrowserStartedOnly)
+                        _emptyHint.text = UiCopy.SessionBrowserEmpty;
                     _emptyHint.gameObject.SetActive(true);
                 }
 
@@ -434,10 +437,16 @@ namespace FusionMultiplayer.UI
 
             if (_emptyHint != null)
             {
-                _emptyHint.text = openCount == 0
-                    ? UiCopy.SessionBrowserStartedOnly
-                    : string.Empty;
-                _emptyHint.gameObject.SetActive(openCount == 0);
+                if (openCount == 0)
+                {
+                    _emptyHint.text = UiCopy.SessionBrowserStartedOnly;
+                    _emptyHint.gameObject.SetActive(true);
+                }
+                else
+                {
+                    _emptyHint.text = string.Empty;
+                    _emptyHint.gameObject.SetActive(false);
+                }
             }
 
             if (_listContent != null)

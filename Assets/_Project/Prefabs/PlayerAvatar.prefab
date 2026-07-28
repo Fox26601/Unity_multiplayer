@@ -127,6 +127,11 @@ MonoBehaviour:
     _length: 0
     _data:
       Data: 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  _MaxHealth: 0
+  _Health: 0
+  _IsDead:
+    _value: 0
+  _HitCount: 0
   _bodyRenderer: {fileID: 6165322795163902730}
   _nameTag: {fileID: 3677395294929029931}
 --- !u!114 &3479457118551418238
@@ -142,7 +147,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Player.PlayerMovement
   _moveSpeed: 4
-  _turnSpeed: 120
 --- !u!114 &6400066288756584856
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -156,7 +160,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Player.BuilderTool
   _blockPrefab: {fileID: 3068481967948173317, guid: 4d849b18f445742a0b2ab121a8372ef7, type: 3}
-  _spawnDistance: 2
   _rayDistance: 8
 --- !u!114 &7890123456789012345
 MonoBehaviour:
@@ -187,61 +190,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Player.PlayerWeapon
   _projectilePrefab: {fileID: 7100000000000000003, guid: b0c1d2e3f4a546b7c8d9e0f1a2b3c4d6, type: 3}
   _muzzleForwardOffset: 0.65
---- !u!1 &8701234567890123456
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 8801234567890123456}
-  - component: {fileID: 8811234567890123456}
-  m_Layer: 0
-  m_Name: Hitbox
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &8801234567890123456
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8701234567890123456}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.9, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 811670292367430969}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!136 &8811234567890123456
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8701234567890123456}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.4
-  m_Height: 1.8
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &928492774346732149
 GameObject:
   m_ObjectHideFlags: 0
@@ -541,3 +489,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b49bf3bbca2749be9aa5612cf1a97ec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Player.NameTag
+--- !u!1 &8701234567890123456
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8801234567890123456}
+  - component: {fileID: 8811234567890123456}
+  m_Layer: 0
+  m_Name: Hitbox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8801234567890123456
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8701234567890123456}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.9, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 811670292367430969}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!136 &8811234567890123456
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8701234567890123456}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.4
+  m_Height: 1.8
+  m_Direction: 1
+  m_Center: {x: 0, y: 0, z: 0}
