@@ -507,7 +507,7 @@ namespace FusionMultiplayer.UI
             ownerRt.offsetMin = new Vector2(4f, 2f);
             ownerRt.offsetMax = new Vector2(-4f, 0f);
             var owner = ownerGo.GetComponent<TMP_Text>();
-            owner.text = "FREE";
+            owner.text = UiCopy.CharacterSlotFree;
             if (TmpFont != null) owner.font = TmpFont;
             owner.fontSize = UiTypography.Caption;
             owner.alignment = TextAlignmentOptions.Center;
@@ -578,6 +578,32 @@ namespace FusionMultiplayer.UI
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = anchoredPosition;
             rt.sizeDelta = size;
+        }
+
+        internal static GameObject CreateDimOverlay(Transform parent, string name, Color? color = null,
+            bool raycastTarget = true)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var image = go.GetComponent<Image>();
+            image.color = color ?? UiTheme.DimOverlay;
+            image.raycastTarget = raycastTarget;
+            return go;
+        }
+
+        internal static GameObject CreateCenteredPanel(Transform parent, string name, Vector2 size,
+            Color? color = null)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(parent, false);
+            PlaceCenter(go.GetComponent<RectTransform>(), Vector2.zero, size);
+            go.GetComponent<Image>().color = color ?? UiTheme.PanelBackground;
+            return go;
         }
 
         internal static void Stretch(RectTransform rt, float horizontalPadding, float verticalPadding)

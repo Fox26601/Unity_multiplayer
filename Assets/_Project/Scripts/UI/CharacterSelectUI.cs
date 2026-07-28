@@ -35,12 +35,37 @@ namespace FusionMultiplayer.UI
             _statusText = statusText;
             _panelRoot = panelRoot;
             _statusLegacy = null;
-            _hasSpawnedAvatar = false;
-            _pendingSlot = -1;
-            _retryPendingWhenGmReady = false;
-            _gameManagerTimedOut = false;
+
+            // Keep spawn state across runtime UI rebinds.
+            var alreadySpawned = _hasSpawnedAvatar || HasLocalSpawnedAvatar();
+            if (alreadySpawned)
+            {
+                _hasSpawnedAvatar = true;
+                if (_panelRoot != null)
+                    _panelRoot.SetActive(false);
+            }
+            else
+            {
+                _hasSpawnedAvatar = false;
+                _pendingSlot = -1;
+                _retryPendingWhenGmReady = false;
+                _gameManagerTimedOut = false;
+            }
+
             RefreshAllSlots();
             StartGameManagerWatch();
+        }
+
+        private static bool HasLocalSpawnedAvatar()
+        {
+            if (LocalPlayerHudCache.TryGetLocalAvatar(out _))
+                return true;
+
+            var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
+            if (runner == null || !runner.IsRunning || runner.LocalPlayer == PlayerRef.None)
+                return false;
+
+            return PlayerRegistry.FindAvatar(runner.LocalPlayer) != null;
         }
 
         private void Awake()
@@ -211,7 +236,7 @@ namespace FusionMultiplayer.UI
                 else
                 {
                     SetStatusText(UiCopy.CharacterSelectRequesting(slot));
-                    gm.RequestCharacter(slot, runner.LocalPlayer);
+                    gm.RequestCharacter(slot);
                 }
             }
         }
@@ -249,7 +274,7 @@ namespace FusionMultiplayer.UI
                 return;
             }
 
-            gm.RequestCharacter(index, runner.LocalPlayer);
+            gm.RequestCharacter(index);
         }
 
         private void OnApproved(int index, Vector3 position, Quaternion rotation)
@@ -331,7 +356,7 @@ namespace FusionMultiplayer.UI
         private static string ResolveOwnerNickname(PlayerRef owner)
         {
             if (owner == PlayerRef.None) return string.Empty;
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == owner)
                     return pd.Nick.ToString();
@@ -343,7 +368,7 @@ namespace FusionMultiplayer.UI
         private static Color ResolveOwnerTint(PlayerRef owner)
         {
             if (owner == PlayerRef.None) return Color.white;
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == owner)
                     return pd.Tint;
@@ -356,7 +381,7 @@ namespace FusionMultiplayer.UI
         {
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             if (runner == null) return null;
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
                     return pd;

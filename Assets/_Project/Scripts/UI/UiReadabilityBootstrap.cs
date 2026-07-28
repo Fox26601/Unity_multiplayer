@@ -14,7 +14,7 @@ namespace FusionMultiplayer.UI
         {
             UiCanvasFix.EnsureReadableCanvas(transform);
 
-            // Edit-mode builds leave MenuUiVersion on Panel; main editor then skips play-mode rebuild.
+            // Edit-mode builds leave UiBuildVersion (legacy: MenuUiVersion) on Panel; main editor then skips play-mode rebuild.
             if (!Application.isPlaying)
                 return;
 

@@ -1,5 +1,7 @@
+using System;
 using System.Threading.Tasks;
 using FusionMultiplayer.Core;
+using FusionMultiplayer.Player;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -47,6 +49,8 @@ namespace FusionMultiplayer.UI
         {
             CleanupDropdownOverlay();
             MainMenuRuntimeRebuild.EnsureBuilt(transform);
+            GameplayInputMode.ChatBlockingGameplay = false;
+            GameplayInputMode.SetMenu();
         }
 
         private void Awake()
@@ -216,6 +220,7 @@ namespace FusionMultiplayer.UI
         private void Start()
         {
             CleanupDropdownOverlay();
+            GameplayInputMode.SetMenu();
             var nick = GetNicknameText();
             if (string.IsNullOrEmpty(nick))
                 SetNicknameText(SessionData.Nickname);
@@ -246,16 +251,24 @@ namespace FusionMultiplayer.UI
 
             ApplySessionFields();
             SetMenuInteractable(false);
-            if (ConnectionManager.Instance == null)
+            try
             {
-                _sessionFlow?.SetStatus("ConnectionManager is missing in this scene.", true);
-                SetMenuInteractable(true);
-                return;
-            }
+                if (!TryResolveConnectionManager(out var cm))
+                {
+                    _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
+                    return;
+                }
 
-            var ok = await ConnectionManager.Instance.QuickJoinAsync();
-            if (!ok)
+                var ok = await cm.QuickJoinAsync();
+                if (!ok)
+                    SetMenuInteractable(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[FusionMultiplayer] QuickJoin failed: {ex.Message}");
+                _sessionFlow?.SetStatus(UiCopy.QuickJoinNoMatch, true);
                 SetMenuInteractable(true);
+            }
         }
 
         private async Task StartReconnectAsync()
@@ -270,15 +283,27 @@ namespace FusionMultiplayer.UI
             SessionData.SelectedGameMode = mode;
             ApplySessionFields();
             SetMenuInteractable(false);
-            if (ConnectionManager.Instance == null)
+            try
             {
-                SetMenuInteractable(true);
-                return;
-            }
+                if (!TryResolveConnectionManager(out var cm))
+                {
+                    _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
+                    return;
+                }
 
-            var ok = await ConnectionManager.Instance.ReconnectSessionAsync(room);
-            if (!ok)
+                var ok = await cm.ReconnectSessionAsync(room);
+                if (!ok)
+                {
+                    _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
+                    SetMenuInteractable(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[FusionMultiplayer] Reconnect failed: {ex.Message}");
+                _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                 SetMenuInteractable(true);
+            }
         }
 
         public void ShowPage(MainMenuPage page)
@@ -366,32 +391,55 @@ namespace FusionMultiplayer.UI
             SetMenuInteractable(false);
             _sessionBrowser?.SetJoinInProgress(true);
 
-            var cm = ConnectionManager.Instance;
-            if (cm == null)
+            try
             {
-                cm = FindFirstObjectByType<ConnectionManager>();
+                var cm = ResolveConnectionManager();
                 if (cm == null)
                 {
-                    _sessionFlow?.SetStatus(UiCopy.SessionBrowserNoConnection, true);
+                    _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
                     SetMenuInteractable(true);
-                    _sessionBrowser?.SetJoinInProgress(false);
                     return;
                 }
+
+                var room = !string.IsNullOrWhiteSpace(roomOverride) ? roomOverride.Trim() : GetRoomText();
+                if (string.IsNullOrWhiteSpace(room))
+                    room = "Room1";
+
+                var ok = create
+                    ? await cm.CreateSessionAsync(room)
+                    : await cm.JoinSessionAsync(room);
+
+                if (!ok)
+                    SetMenuInteractable(true);
             }
-
-            var room = !string.IsNullOrWhiteSpace(roomOverride) ? roomOverride.Trim() : GetRoomText();
-            if (string.IsNullOrWhiteSpace(room))
-                room = "Room1";
-
-            var ok = create
-                ? await cm.CreateSessionAsync(room)
-                : await cm.JoinSessionAsync(room);
-
-            if (!ok)
+            catch (Exception ex)
             {
+                Debug.LogWarning($"[FusionMultiplayer] Session start failed: {ex.Message}");
                 SetMenuInteractable(true);
-                _sessionBrowser?.SetJoinInProgress(false);
             }
+            finally
+            {
+                if (_sessionFlow == null || !_sessionFlow.IsConnecting)
+                    _sessionBrowser?.SetJoinInProgress(false);
+            }
+        }
+
+        private static bool TryResolveConnectionManager(out ConnectionManager cm)
+        {
+            cm = ResolveConnectionManager();
+            return cm != null;
+        }
+
+        private static ConnectionManager ResolveConnectionManager()
+        {
+            if (ConnectionManager.Instance != null)
+                return ConnectionManager.Instance;
+
+            var found = FindFirstObjectByType<ConnectionManager>();
+            if (found != null)
+                return found;
+
+            return null;
         }
 
         private void SetMenuInteractable(bool interactable)

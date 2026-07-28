@@ -2,7 +2,7 @@
 
 **Author:** Daniil Gorlov (solo submission)
 
-3D coursework prototype: **Shared Mode** lobby + game, master-approved character slots, chat (incl. whisper by nickname), spawn/despawn blocks, master game-over flow. Assignment 3 adds session browser, shooting, and scoring (see [`ASSIGNMENT.md`](Assets/_Project/Docs/ASSIGNMENT.md)).
+3D coursework prototype: **Client-Server / Dedicated Server** (`GameMode.Host` / `Client` / `Server`) lobby + game, server-approved character slots, chat (incl. whisper by nickname), spawn/despawn blocks, server game-over flow. Includes session browser, shooting, scoring, reconnect, bot takeover (see [`ASSIGNMENT.md`](Assets/_Project/Docs/ASSIGNMENT.md)).
 
 ## Quick links
 

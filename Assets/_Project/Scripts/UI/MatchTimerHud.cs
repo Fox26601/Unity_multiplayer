@@ -22,18 +22,18 @@ namespace FusionMultiplayer.UI
             {
                 _timerText = existing.GetComponent<TMP_Text>();
                 if (_timerText != null)
+                {
+                    UiRegionLayout.StretchBand(_timerText.rectTransform, UiRegionLayout.MatchTimerBandYMin,
+                        UiRegionLayout.MatchTimerBandYMax, 200f);
                     return;
+                }
             }
 
             var go = new GameObject("MatchTimerHud", typeof(RectTransform), typeof(CanvasRenderer),
                 typeof(TextMeshProUGUI));
             go.transform.SetParent(transform, false);
             var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.5f, 1f);
-            rt.anchorMax = new Vector2(0.5f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -12f);
-            rt.sizeDelta = new Vector2(180f, 40f);
+            UiRegionLayout.StretchBand(rt, UiRegionLayout.MatchTimerBandYMin, UiRegionLayout.MatchTimerBandYMax, 200f);
 
             _timerText = go.GetComponent<TMP_Text>();
             _timerText.text = "5:00";

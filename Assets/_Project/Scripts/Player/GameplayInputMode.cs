@@ -24,24 +24,22 @@ namespace FusionMultiplayer.Player
 
         public static void SetMenu()
         {
-            if (Current == GameplayInputModeKind.Menu)
-                return;
-
+            var changed = Current != GameplayInputModeKind.Menu;
             Current = GameplayInputModeKind.Menu;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
-            Changed?.Invoke(Current);
+            if (changed)
+                Changed?.Invoke(Current);
         }
 
         public static void SetGameplay()
         {
-            if (Current == GameplayInputModeKind.Gameplay)
-                return;
-
+            var changed = Current != GameplayInputModeKind.Gameplay;
             Current = GameplayInputModeKind.Gameplay;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-            Changed?.Invoke(Current);
+            if (changed)
+                Changed?.Invoke(Current);
         }
 
         /// <summary>Re-apply cursor state after focus loss (e.g. alt-tab).</summary>

@@ -228,14 +228,6 @@ namespace FusionMultiplayer.EditorTools
             EditorSceneManager.SaveScene(scene);
         }
 
-        private static void EnsureCheckerboardGround()
-        {
-            var ground = GameObject.Find("Ground");
-            if (ground == null) return;
-            if (ground.GetComponent<CheckerboardGround>() == null)
-                ground.AddComponent<CheckerboardGround>();
-        }
-
         private static void StripLegacyGameHud()
         {
             foreach (var charUi in Object.FindObjectsByType<CharacterSelectUI>(FindObjectsSortMode.None))

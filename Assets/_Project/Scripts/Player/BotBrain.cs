@@ -126,7 +126,7 @@ namespace FusionMultiplayer.Player
                     _cc.enabled = true;
             }
 
-            var now = Time.time;
+            var now = SimulationNow();
             if (now >= _nextThinkTime)
             {
                 _nextThinkTime = now + _thinkInterval;
@@ -160,12 +160,12 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            if (_target != null || _lostSightUntil > Time.time)
+            if (_target != null || _lostSightUntil > SimulationNow())
             {
                 if (_lostSightUntil <= 0f)
-                    _lostSightUntil = Time.time + _searchDuration;
+                    _lostSightUntil = SimulationNow() + _searchDuration;
 
-                if (Time.time < _lostSightUntil)
+                if (SimulationNow() < _lostSightUntil)
                 {
                     _state = BotState.Search;
                     if (_target != null && _target.IsAlive)
@@ -196,9 +196,9 @@ namespace FusionMultiplayer.Player
                 case BotState.Combat:
                     goal = FlatPos(transform.position);
                     speed = _combatStrafeSpeed;
-                    if (Time.time >= _nextStrafeFlip)
+                    if (SimulationNow() >= _nextStrafeFlip)
                     {
-                        _nextStrafeFlip = Time.time + Random.Range(0.7f, 1.4f);
+                        _nextStrafeFlip = SimulationNow() + Random.Range(0.7f, 1.4f);
                         _strafeSign = -_strafeSign;
                     }
 
@@ -328,7 +328,7 @@ namespace FusionMultiplayer.Player
                     break;
                 case BotState.Search:
                     _look.ApplyBotAim(_lastSeenPos + Vector3.up * 0.4f *
-                        Mathf.Sin(Time.time * 2.2f));
+                        Mathf.Sin(SimulationNow() * 2.2f));
                     break;
                 default:
                     if ((FlatPos(_patrolTarget) - FlatPos(transform.position)).sqrMagnitude > 0.25f)
@@ -336,7 +336,7 @@ namespace FusionMultiplayer.Player
                     break;
             }
 
-            if (_state != BotState.Combat || Time.time < _nextFireTime)
+            if (_state != BotState.Combat || SimulationNow() < _nextFireTime)
                 return;
             if (!SessionRuntime.AllowsShoot || _weapon == null)
                 return;
@@ -347,7 +347,7 @@ namespace FusionMultiplayer.Player
             if (!IsAimedAt(ChestPoint(_target)))
                 return;
 
-            _nextFireTime = Time.time + _fireCooldown;
+            _nextFireTime = SimulationNow() + _fireCooldown;
             _weapon.ServerBotFire();
         }
 
@@ -357,7 +357,7 @@ namespace FusionMultiplayer.Player
             bestDist = float.MaxValue;
             var maxSq = _detectRadius * _detectRadius;
 
-            foreach (var other in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var other in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (other == _avatar || other.Object == null || !other.Object.IsValid || !other.IsAlive)
                     continue;
@@ -512,8 +512,8 @@ namespace FusionMultiplayer.Player
             if (wantsMove && moved < _stuckMoveEpsilon)
             {
                 if (_stuckSince < 0f)
-                    _stuckSince = Time.time;
-                else if (Time.time - _stuckSince >= _stuckSeconds)
+                    _stuckSince = SimulationNow();
+                else if (SimulationNow() - _stuckSince >= _stuckSeconds)
                 {
                     _stuckSince = -1f;
                     if (_state == BotState.Search)
@@ -571,5 +571,12 @@ namespace FusionMultiplayer.Player
 
             _patrolTarget = transform.position + new Vector3(Random.Range(-8f, 8f), 0f, Random.Range(-8f, 8f));
         }
+        private float SimulationNow()
+        {
+            if (_avatar != null && _avatar.Runner != null && _avatar.Runner.IsRunning)
+                return (float)_avatar.Runner.SimulationTime;
+            return Time.time;
+        }
+
     }
 }

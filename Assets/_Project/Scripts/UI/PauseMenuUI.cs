@@ -40,26 +40,10 @@ namespace FusionMultiplayer.UI
             if (existing != null)
                 Destroy(existing.gameObject);
 
-            _overlay = new GameObject("PauseOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            _overlay.transform.SetParent(transform, false);
+            _overlay = UiRuntimeBuildKit.CreateDimOverlay(transform, "PauseOverlay");
             _overlay.transform.SetAsLastSibling();
-            var overlayRt = _overlay.GetComponent<RectTransform>();
-            overlayRt.anchorMin = Vector2.zero;
-            overlayRt.anchorMax = Vector2.one;
-            overlayRt.offsetMin = Vector2.zero;
-            overlayRt.offsetMax = Vector2.zero;
-            var dim = _overlay.GetComponent<Image>();
-            dim.color = new Color(0f, 0f, 0f, 0.72f);
-            dim.raycastTarget = true;
 
-            var panel = new GameObject("Panel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            panel.transform.SetParent(_overlay.transform, false);
-            var panelRt = panel.GetComponent<RectTransform>();
-            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
-            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-            panelRt.pivot = new Vector2(0.5f, 0.5f);
-            panelRt.sizeDelta = new Vector2(480f, 360f);
-            panel.GetComponent<Image>().color = UiTheme.PanelBackground;
+            var panel = UiRuntimeBuildKit.CreateCenteredPanel(_overlay.transform, "Panel", new Vector2(480f, 360f));
 
             var title = CreateLabel(panel.transform, "Title", UiCopy.PauseTitle, UiTypography.Title,
                 UiTheme.TitleAccent, FontStyles.Bold, new Vector2(0f, 120f), new Vector2(400f, 48f));
@@ -173,21 +157,10 @@ namespace FusionMultiplayer.UI
             }
 
             if (!GameplayInputMode.ChatBlockingGameplay && IsInGameScene() && !IsGameOverVisible() &&
-                HasLocalAvatar())
+                LocalPlayerHudCache.TryGetLocalAvatar(out _))
                 GameplayInputMode.SetGameplay();
             else
                 GameplayInputMode.SetMenu();
-        }
-
-        private static bool HasLocalAvatar()
-        {
-            foreach (var a in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (a.Object != null && a.Object.IsValid && a.HasInputAuthority)
-                    return true;
-            }
-
-            return false;
         }
 
         private async System.Threading.Tasks.Task LeaveAsync()
@@ -195,11 +168,19 @@ namespace FusionMultiplayer.UI
             if (_leaveInProgress)
                 return;
             _leaveInProgress = true;
-            SetOpen(false);
             try
             {
+                // Close overlay without SetOpen(false) — that can re-lock gameplay cursor.
+                IsOpen = false;
+                if (_overlay != null)
+                    _overlay.SetActive(false);
+                GameplayInputMode.ChatBlockingGameplay = false;
+                GameplayInputMode.SetMenu();
+
                 if (ConnectionManager.Instance != null)
                     await ConnectionManager.Instance.ShutdownToMainMenuAsync();
+                else
+                    GameplayInputMode.SetMenu();
             }
             finally
             {

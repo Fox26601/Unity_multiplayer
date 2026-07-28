@@ -300,7 +300,7 @@ namespace FusionMultiplayer.UI
             var counts = new int[GameManager.VoteOptionCount];
             var localVote = PlayerData.NoEndGameVote;
 
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid)
                     continue;
@@ -375,7 +375,7 @@ namespace FusionMultiplayer.UI
         private static bool TryGetLocalPlayerData(out PlayerData data)
         {
             data = null;
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid || !pd.HasInputAuthority)
                     continue;
@@ -389,7 +389,7 @@ namespace FusionMultiplayer.UI
 
         private static bool HasLocalAvatar()
         {
-            foreach (var avatar in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (avatar.Object != null && avatar.Object.IsValid && avatar.HasInputAuthority)
                     return true;

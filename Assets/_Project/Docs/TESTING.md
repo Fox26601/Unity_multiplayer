@@ -51,6 +51,7 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 1. During a match, note room name; force-quit the client (do not use Leave — that clears the reconnect store).
 2. Relaunch → Main Menu shows **Reconnect**.
 3. Reconnect sends the same `ConnectionToken`; server restores `InputAuthority` on the existing avatar and disables the bot.
+4. If Join/Reconnect previously failed with `GameClosed (32764)`, confirm `SessionLock` keeps `IsOpen=true` and only sets `phase=Started` (host `OnConnectRequest` refuses unknown tokens).
 
 ## G — Physics prop (animator deferred)
 
@@ -76,10 +77,12 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Boot → Main Menu loads
 - [ ] Join room page: session list loads without `JoinLobby … JoiningLobby` console errors
 - [ ] Mouse look smooth
-- [ ] Projectiles despawn on environment / corpses
-- [ ] Projectiles never hang mid-air: wall/player/bot hit despawns immediately; miss despawns ≤5s on host and proxy
+- [ ] Projectiles despawn on environment / corpses / timeout (≤5s)
 - [ ] Chat + whisper
-- [ ] Build/Sandbox: E place / Q remove with no placement ghost; Sandbox removes any placed block; Build host can remove own blocks, others cannot remove host blocks
-- [ ] Session browser filters + started rooms not joinable (except known reconnect token)
-- [ ] Career Leaderboard button opens modal after at least one finished match; Close / Esc / dim dismiss it; no always-on corner panel
-- [ ] Duplicate nickname on join is rejected; Main Menu shows the taken-nickname error
+- [ ] Build/Sandbox place/remove; Build: only placer removes own blocks
+- [ ] Started rooms not joinable (except known reconnect token)
+- [ ] Leave → Main Menu: cursor unlocked, buttons clickable
+- [ ] Leave clears reconnect store; force-quit keeps token → Reconnect works
+- [ ] Career Leaderboard opens after a finished match; no `BOT …` rows
+- [ ] Duplicate nickname rejected with clear Main Menu error
+- [ ] Tools → Validate Setup / Validate UI (own Photon App Id)

@@ -16,7 +16,8 @@ namespace FusionMultiplayer.UI
             {
                 var panel = canvasRoot.Find("Panel");
                 if (panel != null &&
-                    (panel.Find("MenuUiVersion")?.GetComponent<UiBuildVersionMarker>() != null ||
+                    (panel.Find("UiBuildVersion")?.GetComponent<UiBuildVersionMarker>() != null ||
+                     panel.Find("MenuUiVersion")?.GetComponent<UiBuildVersionMarker>() != null ||
                      panel.Find("MenuUiVersion")?.GetComponent<TMP_Text>() != null))
                     return;
             }

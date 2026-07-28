@@ -221,7 +221,7 @@ namespace FusionMultiplayer.Player
             if (ValidateHit(victim, victimRef))
             {
                 var hitOrigin = NetPosition;
-                victim.RpcRegisterHit(Damage, _shooterRef, hitOrigin);
+                victim.ApplyServerHit(Damage, _shooterRef, hitOrigin);
             }
 
             // Always despawn on intended target contact, even if damage validation fails.
@@ -255,7 +255,7 @@ namespace FusionMultiplayer.Player
             if (_collider == null || _shooterRef == PlayerRef.None)
                 return;
 
-            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (avatar.Object == null || !avatar.Object.IsValid)
                     continue;

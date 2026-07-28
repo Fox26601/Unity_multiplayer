@@ -147,18 +147,9 @@ namespace FusionMultiplayer.Player
             if (SessionRuntime.AllowsBreakAnyBlock)
                 return true;
 
-            // Build: host blocks removable only by host; everyone can remove non-host blocks.
-            var hostPlayer = PlayerRef.None;
-            foreach (var p in Runner.ActivePlayers)
-            {
-                hostPlayer = p;
-                break;
-            }
-
-            if (blockObject.InputAuthority == hostPlayer)
-                return Object.InputAuthority == hostPlayer;
-
-            return true;
+            // Build: only the placer may remove their own blocks (Dedicated-safe).
+            return blockObject.InputAuthority != PlayerRef.None &&
+                   Object.InputAuthority == blockObject.InputAuthority;
         }
 
         private bool TryResolvePlacement(out Vector3 cellCenter)

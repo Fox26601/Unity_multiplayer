@@ -155,7 +155,7 @@ namespace FusionMultiplayer.UI
             sb.AppendLine();
 
             var anyListed = false;
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid) continue;
                 anyListed = true;
@@ -230,7 +230,7 @@ namespace FusionMultiplayer.UI
                 return;
             }
 
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
                 {

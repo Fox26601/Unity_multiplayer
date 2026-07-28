@@ -196,7 +196,7 @@ namespace FusionMultiplayer.EditorTools
         {
             var go = new GameObject("Projectile");
             go.AddComponent<NetworkObject>();
-            go.AddComponent<NetworkTransform>();
+            // No NetworkTransform — Projectile drives pose via [Networked] fields (see Projectile.cs).
             var rb = go.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
@@ -435,35 +435,14 @@ namespace FusionMultiplayer.EditorTools
             cso.FindProperty("_playerDataPrefab").objectReferenceValue = pdPrefab;
             cso.ApplyModifiedPropertiesWithoutUndo();
 
+            // Stub canvas — MainMenuRuntimeRebuild builds Landing/Create/Join at play time.
             var canvas = UiSceneLayout.CreateCanvas("MainMenuCanvas");
-            var menu = canvas.gameObject.AddComponent<MainMenuUI>();
-            var sessionFlow = canvas.gameObject.AddComponent<SessionFlowUI>();
+            canvas.gameObject.AddComponent<UiReadabilityBootstrap>();
+            canvas.gameObject.AddComponent<MainMenuUI>();
+            canvas.gameObject.AddComponent<SessionFlowUI>();
             var panel = UiSceneLayout.CreateUIPanel(canvas.transform, "Panel");
             UiSceneLayout.CreateTitle(panel.transform, "Title", UiCopy.MainMenuTitle);
-            UiSceneLayout.CreateSubtitle(panel.transform, "Subtitle", UiCopy.MainMenuSubtitle);
-
-            var nick = UiSceneLayout.CreateInputField(panel.transform, "NicknameField", "Your nickname", new Vector2(560f, 64f));
-            var room = UiSceneLayout.CreateInputField(panel.transform, "RoomField", "Room name (same for all players)", new Vector2(560f, 64f));
-            var preview = UiSceneLayout.CreateImage(panel.transform, "ColorPreview", 80f, 80f);
-            var randomColor = UiSceneLayout.CreateButton(panel.transform, "BtnRandomColor", "Random player color", new Vector2(320f, 64f));
-            var create = UiSceneLayout.CreateButton(panel.transform, "BtnCreate", "Create / Host room", new Vector2(400f, 72f));
-            var join = UiSceneLayout.CreateButton(panel.transform, "BtnJoin", "Join room", new Vector2(400f, 72f));
-            var status = UiSceneLayout.CreateStatusLine(panel.transform, "SessionStatus", string.Empty);
-            UiSceneLayout.ConfigureMainMenuPanel(panel.transform, nick, room, preview, randomColor, create, join);
-
-            var sfso = new SerializedObject(sessionFlow);
-            sfso.FindProperty("_statusText").objectReferenceValue = status;
-            sfso.ApplyModifiedPropertiesWithoutUndo();
-
-            var mso = new SerializedObject(menu);
-            mso.FindProperty("_nicknameField").objectReferenceValue = nick;
-            mso.FindProperty("_roomField").objectReferenceValue = room;
-            mso.FindProperty("_createButton").objectReferenceValue = create;
-            mso.FindProperty("_joinButton").objectReferenceValue = join;
-            mso.FindProperty("_colorPreview").objectReferenceValue = preview;
-            mso.FindProperty("_randomColorButton").objectReferenceValue = randomColor;
-            mso.FindProperty("_sessionFlow").objectReferenceValue = sessionFlow;
-            mso.ApplyModifiedPropertiesWithoutUndo();
+            UiSceneLayout.CreateSubtitle(panel.transform, "Subtitle", UiCopy.MainMenuLandingSubtitle);
 
             EditorSceneManager.SaveScene(scene, $"{ScenesPath}/00_MainMenu.unity");
         }
@@ -479,21 +458,13 @@ namespace FusionMultiplayer.EditorTools
             cam.transform.position = new Vector3(0f, 6f, -8f);
             cam.transform.rotation = Quaternion.Euler(25f, 0f, 0f);
 
+            // Stub canvas — LobbyRuntimeRebuild creates SessionInfo + Leave/Start at play time.
             var canvas = UiSceneLayout.CreateCanvas("LobbyCanvas");
+            canvas.gameObject.AddComponent<UiReadabilityBootstrap>();
             canvas.gameObject.AddComponent<SessionFlowUI>();
-            var lobby = canvas.gameObject.AddComponent<LobbyUI>();
+            canvas.gameObject.AddComponent<LobbyUI>();
             var panel = UiSceneLayout.CreateUIPanel(canvas.transform, "Panel");
             UiSceneLayout.CreateTitle(panel.transform, "Title", UiCopy.LobbyTitle);
-            var listText = UiSceneLayout.CreateText(panel.transform, "PlayerList", UiTypography.Body, TextAlignmentOptions.TopLeft);
-            var status = UiSceneLayout.CreateText(panel.transform, "Status", UiTypography.Caption, TextAlignmentOptions.MidlineLeft);
-            var start = UiSceneLayout.CreateButton(panel.transform, "BtnStart", "START GAME (master only)", new Vector2(560f, 80f));
-            UiSceneLayout.ConfigureLobbyPanel(listText, status, start);
-
-            var lso = new SerializedObject(lobby);
-            lso.FindProperty("_startButton").objectReferenceValue = start;
-            lso.FindProperty("_playerListText").objectReferenceValue = listText;
-            lso.FindProperty("_statusText").objectReferenceValue = status;
-            lso.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene, $"{ScenesPath}/01_Lobby.unity");
         }

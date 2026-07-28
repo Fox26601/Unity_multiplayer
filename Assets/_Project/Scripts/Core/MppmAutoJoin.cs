@@ -102,8 +102,13 @@ namespace FusionMultiplayer.Core
                         yield break;
                     }
 
-                    flow?.SetStatus("MPPM auto-join failed — check console.", true);
-                    yield break;
+                    // Join can fail with GameClosed after the host started the match — keep polling
+                    // for a new Create / Host (bridge file must stay owned by the main editor).
+                    flow?.SetStatus(
+                        "MPPM auto-join failed (room closed or started). Waiting for a new lobby…", true);
+                    yield return new WaitForSecondsRealtime(2f);
+                    elapsed += 2f;
+                    continue;
                 }
 
                 yield return new WaitForSecondsRealtime(PollInterval);

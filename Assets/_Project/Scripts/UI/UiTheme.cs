@@ -16,6 +16,9 @@ namespace FusionMultiplayer.UI
         public static readonly Color StatusOk = new Color(0.55f, 1f, 0.65f, 1f);
         public static readonly Color StatusError = new Color(1f, 0.45f, 0.45f, 1f);
         public static readonly Color Placeholder = new Color(0.78f, 0.82f, 0.88f, 0.92f);
+        public static readonly Color BotBadge = new Color(1f, 0.55f, 0.2f, 1f);
+        public static readonly Color Crosshair = new Color(1f, 1f, 1f, 0.9f);
+        public static readonly Color DimOverlay = new Color(0f, 0f, 0f, 0.72f);
         /// <summary>Private / whisper lines in chat log (rich text).</summary>
         public static readonly Color ChatWhisperText = new Color(0.45f, 0.78f, 1f, 1f);
     }

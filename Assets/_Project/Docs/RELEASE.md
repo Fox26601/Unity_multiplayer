@@ -22,8 +22,8 @@ Quick path from clone to a playable **single-editor Play** session.
 
 1. **Fusion → Network Project Config**
 2. **Assemblies To Weave:** include `FusionMultiplayer.Runtime` → **Apply**
-3. **Network prefabs:** register `PlayerData`, `PlayerAvatar`, `PlacedBlock`, `Projectile` from `Assets/_Project/Prefabs/`
-4. **Tick Rate (Shared Mode):** **32 Hz** client/server tick, **16 Hz** send (Client Send Index = 1, Server Send Index = 1). The repo ships this in `NetworkProjectConfig.fusion`; confirm in Fusion Hub and **Apply** if you changed it.
+3. **Network prefabs:** register `PlayerData`, `PlayerAvatar`, `PlacedBlock`, `Projectile`, `PhysicsProp` from `Assets/_Project/Prefabs/`
+4. **Peer Mode:** Client-Server (Host / Client / Dedicated Server), not Shared Mode. Confirm tick/send rates match the shipped `NetworkProjectConfig.fusion` → **Apply** if changed.
 
 ## 4. Editor play settings
 
@@ -42,9 +42,9 @@ Fix any errors before testing.
 1. Press **Play** (starts `00_MainMenu`)
 2. Enter nickname + room name → **Create / Host room**
 3. Status shows **Connecting…** → lobby with **LOBBY** title and player list
-4. **START GAME (master only)** → game scene
+4. **START GAME** (host/server loads the map; clients may request start via RPC) → game scene
 5. Pick character slot → WASD move, E/Q blocks, chat
-6. Master **End game** → **Leave to main menu**
+6. **End game** → **Leave to main menu** (cursor must unlock; Main Menu buttons clickable)
 
 Console should have **no red errors** and **no `[Fusion] Invalid TickRate`**.
 
@@ -58,7 +58,7 @@ Use **Multiplayer Play Mode** or ParrelSync for 2–3 clients — see `TESTING.m
 |-------|----------|
 | Main menu | Readable title, fields, dark buttons, white text |
 | Connect | On-screen status; auto lobby load |
-| Lobby | Player list, master Start Game |
+| Lobby | Player list, Start Game (server authority; clients may request) |
 | Game | SlotGrid 5×2, avatar, camera, chat scroll, End Game band |
 | Errors | Shown on screen (red status), not only Console |
 | Fusion | Valid tick rate, prefabs registered, runtime woven |

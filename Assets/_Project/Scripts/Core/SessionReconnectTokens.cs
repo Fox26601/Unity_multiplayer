@@ -1,7 +1,6 @@
 using System.Text;
 using Fusion;
 using FusionMultiplayer.Player;
-using UnityEngine;
 
 namespace FusionMultiplayer.Core
 {
@@ -42,20 +41,6 @@ namespace FusionMultiplayer.Core
             return TryRead(bytes, out token);
         }
 
-        public static bool IsKnownToken(string token)
-        {
-            if (string.IsNullOrWhiteSpace(token))
-                return false;
-
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.ReconnectToken.ToString() == token)
-                    return true;
-            }
-
-            return false;
-        }
+        public static bool IsKnownToken(string token) => PlayerRegistry.IsKnownToken(token);
     }
 }

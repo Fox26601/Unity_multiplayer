@@ -17,7 +17,7 @@ namespace FusionMultiplayer.Core
         public static Color Tint { get; set; } = Color.white;
 
         /// <summary>Selected before create/join on the main menu.</summary>
-        public static SessionCatalog.GameModeKind SelectedGameMode { get; set; } = SessionCatalog.GameModeKind.Build;
+        public static SessionCatalog.GameModeKind SelectedGameMode { get; set; } = SessionCatalog.GameModeKind.Sandbox;
 
         /// <summary>Preferred map filter in the session browser (Any = no map filter).</summary>
         public static SessionCatalog.MapKind SelectedMap { get; set; } = SessionCatalog.MapKind.Any;

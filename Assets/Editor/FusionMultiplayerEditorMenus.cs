@@ -16,7 +16,7 @@ using Object = UnityEngine.Object;
 /// <summary>
 /// Editor utilities for Fusion Multiplayer template: play mode start scene, setup validation, scene patches.
 /// </summary>
-internal static class FusionMultiplayerEditorMenus
+public static class FusionMultiplayerEditorMenus
 {
     private const string MainMenuScenePath = "Assets/_Project/Scenes/00_MainMenu.unity";
     private const string LobbyScenePath = "Assets/_Project/Scenes/01_Lobby.unity";
@@ -78,7 +78,7 @@ internal static class FusionMultiplayerEditorMenus
         SessionData.UseOfflineMode = !SessionData.UseOfflineMode;
         Debug.Log(SessionData.UseOfflineMode
             ? "[FusionMultiplayer] Offline play ON — Create/Join uses GameMode.Single (no Photon DNS). Multiplayer requires turning this OFF."
-            : "[FusionMultiplayer] Offline play OFF — Create/Join uses Photon Shared Mode.");
+            : "[FusionMultiplayer] Offline play OFF — Create/Join uses Photon Client-Server (Host/Client).");
     }
 
     [MenuItem(OfflinePlayMenuPath, true)]
@@ -137,21 +137,22 @@ internal static class FusionMultiplayerEditorMenus
     }
 
     [MenuItem("Tools/Fusion Multiplayer/Validate Setup (Console Report)")]
-    private static void ValidateSetup()
+    public static void ValidateSetup()
     {
         var ok = true;
 
         var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).ToArray();
-        if (scenes.Length < 5)
+        if (scenes.Length < 6)
         {
-            Debug.LogError($"[FusionMultiplayer] Build Settings: expected 5 enabled scenes (menu, lobby, 3 maps), found {scenes.Length}.");
+            Debug.LogError(
+                $"[FusionMultiplayer] Build Settings: expected 6 enabled scenes (Boot, MainMenu, Lobby, 3 maps), found {scenes.Length}.");
             ok = false;
         }
         else
         {
             var expected = new[]
             {
-                "00_MainMenu.unity", "01_Lobby.unity",
+                "00_Boot.unity", "00_MainMenu.unity", "01_Lobby.unity",
                 "02_Game_Arena.unity", "03_Game_Plaza.unity", "04_Game_Ruins.unity"
             };
             for (var i = 0; i < expected.Length; i++)
@@ -184,14 +185,14 @@ internal static class FusionMultiplayerEditorMenus
             if (json.Contains("\"Client\": 64"))
             {
                 Debug.LogError(
-                    "[FusionMultiplayer] NetworkProjectConfig.fusion: Shared Mode requires Client tick rate 32 (not 64). Open Fusion → Network Project Config → Tick Rate and Apply.");
+                    "[FusionMultiplayer] NetworkProjectConfig.fusion: Client tick rate 64 is unsupported for this project. Open Fusion → Network Project Config → Tick Rate and Apply the shipped rates.");
                 ok = false;
             }
 
             if (json.Contains("\"Client\": 32") && json.Contains("\"ClientSendIndex\": 0"))
             {
                 Debug.LogError(
-                    "[FusionMultiplayer] NetworkProjectConfig.fusion: Shared Mode send rate should be 16 Hz (Client Send Index = 1 for 32 Hz tick). Open Fusion Hub → Tick Rate and Apply.");
+                    "[FusionMultiplayer] NetworkProjectConfig.fusion: Client Send Index 0 with 32 Hz tick under-sends. Set Client Send Index = 1 (or match shipped NetworkProjectConfig.fusion) and Apply.");
                 ok = false;
             }
 
@@ -228,8 +229,10 @@ internal static class FusionMultiplayerEditorMenus
         else
         {
             var p = AssetDatabase.GetAssetPath(EditorSceneManager.playModeStartScene);
-            if (!p.EndsWith("00_MainMenu.unity", System.StringComparison.OrdinalIgnoreCase))
-                Debug.LogWarning($"[FusionMultiplayer] Play Mode Start Scene is {p} (expected 00_MainMenu for this template).");
+            if (!p.EndsWith("00_Boot.unity", System.StringComparison.OrdinalIgnoreCase) &&
+                !p.EndsWith("00_MainMenu.unity", System.StringComparison.OrdinalIgnoreCase))
+                Debug.LogWarning(
+                    $"[FusionMultiplayer] Play Mode Start Scene is {p} (expected 00_Boot or 00_MainMenu).");
         }
 
         ok &= ValidateUiScenes();
@@ -310,9 +313,13 @@ internal static class FusionMultiplayerEditorMenus
         if (requireTitle)
         {
             var bootstrapMenu = Object.FindFirstObjectByType<MainMenuUI>();
-            if (bootstrapMenu != null && bootstrapMenu.GetComponent<UiReadabilityBootstrap>() != null)
+            var bootstrapLobby = Object.FindFirstObjectByType<LobbyUI>();
+            var titleBuiltAtRuntime =
+                (bootstrapMenu != null && bootstrapMenu.GetComponent<UiReadabilityBootstrap>() != null) ||
+                (bootstrapLobby != null && bootstrapLobby.GetComponent<UiReadabilityBootstrap>() != null);
+            if (titleBuiltAtRuntime)
             {
-                // Title is created at runtime by MainMenuRuntimeRebuild.
+                // Title is created at runtime by MainMenuRuntimeRebuild / LobbyRuntimeRebuild.
             }
             else
             {

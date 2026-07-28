@@ -238,15 +238,6 @@ namespace FusionMultiplayer.UI
             return chatPanel.GetComponent<VerticalLayoutGroup>() == null;
         }
 
-        private static bool NeedsRebuild(Transform charPanel)
-        {
-            if (NeedsCharacterRebuild(charPanel))
-                return true;
-
-            var chatPanel = charPanel.parent?.Find("ChatPanel");
-            return NeedsChatRebuild(chatPanel);
-        }
-
         private static void PurgeLegacyGameHud(Transform canvas)
         {
             DestroyWhisperDropdownTemplate(canvas);
@@ -371,7 +362,7 @@ namespace FusionMultiplayer.UI
             titleGo.transform.SetParent(barGo.transform, false);
             titleGo.GetComponent<LayoutElement>().flexibleWidth = 0.35f;
             var title = titleGo.GetComponent<TMP_Text>();
-            title.text = "CHAT";
+            title.text = UiCopy.ChatPanelTitle;
             UiTypography.ApplyChatTitle(title);
 
             var selfGo = new GameObject("ChatSelfNick", typeof(RectTransform), typeof(CanvasRenderer),
@@ -446,7 +437,7 @@ namespace FusionMultiplayer.UI
             input.lineType = TMP_InputField.LineType.SingleLine;
             input.pointSize = UiTypography.ChatInputCompact;
 
-            var send = UiRuntimeBuildKit.CreateLayoutButton(rowGo.transform, "ChatSend", "Send", 60f, 28f);
+            var send = UiRuntimeBuildKit.CreateLayoutButton(rowGo.transform, "ChatSend", UiCopy.ChatSendButton, 60f, 28f);
             UiTypography.StyleChatSendButton(send);
         }
 

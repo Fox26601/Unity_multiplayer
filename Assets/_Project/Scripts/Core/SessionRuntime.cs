@@ -5,7 +5,7 @@ namespace FusionMultiplayer.Core
     /// <summary>Runtime game mode from session properties (or offline SessionData fallback).</summary>
     public static class SessionRuntime
     {
-        private static SessionCatalog.GameModeKind _cachedMode = SessionCatalog.GameModeKind.Build;
+        private static SessionCatalog.GameModeKind _cachedMode = SessionCatalog.GameModeKind.Sandbox;
         private static bool _initialized;
 
         public static SessionCatalog.GameModeKind CurrentMode

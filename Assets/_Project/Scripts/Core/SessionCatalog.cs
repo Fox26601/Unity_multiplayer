@@ -42,7 +42,7 @@ namespace FusionMultiplayer.Core
         }
 
         public static readonly GameModeKind[] AllGameModes =
-            { GameModeKind.Build, GameModeKind.Combat, GameModeKind.Sandbox };
+            { GameModeKind.Sandbox, GameModeKind.Build, GameModeKind.Combat };
 
         public static readonly MapKind[] SelectableMaps =
             { MapKind.Arena, MapKind.Plaza, MapKind.Ruins };

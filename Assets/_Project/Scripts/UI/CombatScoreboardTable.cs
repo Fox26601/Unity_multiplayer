@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
+using FusionMultiplayer.Core;
 using FusionMultiplayer.Player;
 
 namespace FusionMultiplayer.UI
@@ -41,7 +42,7 @@ namespace FusionMultiplayer.UI
         private static List<Row> CollectRows()
         {
             var rows = new List<Row>();
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(UnityEngine.FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid)
                     continue;

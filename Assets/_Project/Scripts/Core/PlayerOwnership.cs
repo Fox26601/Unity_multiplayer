@@ -1,12 +1,12 @@
 using Fusion;
 using FusionMultiplayer.Player;
-using UnityEngine;
 
 namespace FusionMultiplayer.Core
 {
     /// <summary>
     /// Resolves avatars / PlayerData after Fusion clears InputAuthority on disconnect.
     /// Character slot ownership is kept so bots and reconnect can still find the body.
+    /// Backed by <see cref="PlayerRegistry"/>.
     /// </summary>
     public static class PlayerOwnership
     {
@@ -20,7 +20,8 @@ namespace FusionMultiplayer.Core
                 return input;
 
             var gm = GameManager.Instance;
-            if (gm == null || avatar.CharacterSlot < 0 || avatar.CharacterSlot >= 10)
+            if (gm == null || avatar.CharacterSlot < 0 ||
+                avatar.CharacterSlot >= PlayerRegistry.MaxCharacterSlots)
                 return PlayerRef.None;
 
             return gm.GetCharacterOwner(avatar.CharacterSlot);
@@ -31,55 +32,46 @@ namespace FusionMultiplayer.Core
             if (player == PlayerRef.None)
                 return null;
 
-            foreach (var avatar in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (avatar.Object == null || !avatar.Object.IsValid)
-                    continue;
-                if (avatar.Object.InputAuthority == player)
-                    return avatar;
-            }
+            var byInput = PlayerRegistry.FindAvatar(player);
+            if (byInput != null)
+                return byInput;
 
             var gm = GameManager.Instance;
             if (gm == null)
                 return null;
 
-            for (var slot = 0; slot < 10; slot++)
+            for (var slot = 0; slot < PlayerRegistry.MaxCharacterSlots; slot++)
             {
                 if (gm.GetCharacterOwner(slot) != player)
                     continue;
 
-                foreach (var avatar in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-                {
-                    if (avatar.Object == null || !avatar.Object.IsValid)
-                        continue;
-                    if (avatar.CharacterSlot == slot)
-                        return avatar;
-                }
+                var bySlot = PlayerRegistry.FindAvatarBySlot(slot);
+                if (bySlot != null)
+                    return bySlot;
             }
 
             return null;
         }
+
+        public static PlayerAvatar FindAvatarBySlot(int slot) =>
+            PlayerRegistry.FindAvatarBySlot(slot);
 
         public static PlayerData FindPlayerData(PlayerRef player, int preferredSlot = -1)
         {
             if (player == PlayerRef.None)
                 return null;
 
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.Object.InputAuthority == player)
-                    return pd;
-            }
+            var byInput = PlayerRegistry.FindPlayerData(player);
+            if (byInput != null)
+                return byInput;
 
             var slot = preferredSlot;
-            if (slot < 0 || slot >= 10)
+            if (slot < 0 || slot >= PlayerRegistry.MaxCharacterSlots)
             {
                 var gm = GameManager.Instance;
                 if (gm != null)
                 {
-                    for (var i = 0; i < 10; i++)
+                    for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
                     {
                         if (gm.GetCharacterOwner(i) != player)
                             continue;
@@ -89,18 +81,10 @@ namespace FusionMultiplayer.Core
                 }
             }
 
-            if (slot < 0 || slot >= 10)
+            if (slot < 0 || slot >= PlayerRegistry.MaxCharacterSlots)
                 return null;
 
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.CharacterIndex == slot)
-                    return pd;
-            }
-
-            return null;
+            return PlayerRegistry.FindPlayerDataBySlot(slot);
         }
     }
 }

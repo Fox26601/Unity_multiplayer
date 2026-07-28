@@ -1,3 +1,4 @@
+using System;
 using FusionMultiplayer.Core;
 using TMPro;
 using UnityEngine;
@@ -100,10 +101,15 @@ namespace FusionMultiplayer.UI
             SetStatus(UiCopy.StatusEnteringLobby, false);
         }
 
-        private void OnSessionFailed(string reason)
+            private void OnSessionFailed(string reason)
         {
             _isConnecting = false;
-            SetStatus($"{UiCopy.StatusFailedPrefix}{reason}", true);
+            // Nickname / session errors are already full sentences — avoid "Connection failed: Connection failed: …".
+            var text = reason ?? string.Empty;
+            if (!text.StartsWith(UiCopy.StatusFailedPrefix, StringComparison.OrdinalIgnoreCase) &&
+                !text.StartsWith(UiCopy.DisconnectNoticePrefix, StringComparison.OrdinalIgnoreCase))
+                text = $"{UiCopy.StatusFailedPrefix}{text}";
+            SetStatus(text, true);
         }
 
         private void OnLocalDisconnect(string reason)

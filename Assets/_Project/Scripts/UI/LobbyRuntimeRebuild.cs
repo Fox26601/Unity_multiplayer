@@ -80,7 +80,7 @@ namespace FusionMultiplayer.UI
                 leaveLabel.textWrappingMode = TextWrappingModes.Normal;
             }
 
-            var start = UiRuntimeBuildKit.CreateButton(panel, "BtnStart", "START GAME",
+            var start = UiRuntimeBuildKit.CreateButton(panel, "BtnStart", UiCopy.LobbyStartButton,
                 Vector2.zero, new Vector2(260f, 64f));
             var startRt = (RectTransform)start.transform;
             startRt.anchorMin = new Vector2(0.52f, bandButtonBottom);
@@ -91,7 +91,7 @@ namespace FusionMultiplayer.UI
             var startLabel = start.GetComponentInChildren<TMP_Text>();
             if (startLabel != null)
             {
-                startLabel.text = "START GAME";
+                startLabel.text = UiCopy.LobbyStartButton;
                 startLabel.textWrappingMode = TextWrappingModes.Normal;
             }
 

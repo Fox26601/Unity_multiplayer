@@ -368,7 +368,7 @@ namespace FusionMultiplayer.UI
             SetEmptyHint(UiCopy.SessionBrowserLoading);
             try
             {
-                var ok = await ConnectionManager.Instance.RefreshSessionLobbyAsync(SessionData.SelectedGameMode);
+                var ok = await ConnectionManager.Instance.EnsureSessionLobbyAsync(SessionData.SelectedGameMode);
                 if (!_joinPageActive)
                     return;
 

@@ -37,6 +37,7 @@ namespace FusionMultiplayer.Core
                 var nick = pd.Nick.ToString();
                 if (!nick.StartsWith("BOT "))
                     pd.Nick = "BOT " + nick;
+                PlayerRegistry.NotifyReconnectTokenChanged(pd);
             }
 
             if (avatar.HasStateAuthority)

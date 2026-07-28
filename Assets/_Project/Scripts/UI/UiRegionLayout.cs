@@ -7,6 +7,14 @@ namespace FusionMultiplayer.UI
     /// <summary>Non-overlapping anchor bands for runtime UI (1280x720 reference).</summary>
     public static class UiRegionLayout
     {
+        /// <summary>Top-center match timer band (screen Y anchors).</summary>
+        public const float MatchTimerBandYMin = 0.935f;
+        public const float MatchTimerBandYMax = 0.99f;
+
+        /// <summary>Match info strip directly under the timer.</summary>
+        public const float MatchInfoBandYMin = 0.82f;
+        public const float MatchInfoBandYMax = 0.93f;
+
         public static void StretchBand(RectTransform rt, float yMin, float yMax, float xPad = 24f)
         {
             rt.anchorMin = new Vector2(0f, yMin);

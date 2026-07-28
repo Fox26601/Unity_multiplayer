@@ -1,5 +1,4 @@
 using FusionMultiplayer.Core;
-using FusionMultiplayer.Player;
 using TMPro;
 using UnityEngine;
 
@@ -58,7 +57,7 @@ namespace FusionMultiplayer.UI
             if (_healthText == null)
                 return;
 
-            if (!SessionRuntime.AllowsShoot || !TryGetLocalAvatar(out var avatar))
+            if (!SessionRuntime.AllowsShoot || !LocalPlayerHudCache.TryGetLocalAvatar(out var avatar))
             {
                 _healthText.gameObject.SetActive(false);
                 return;
@@ -72,21 +71,6 @@ namespace FusionMultiplayer.UI
                 _healthText.text = UiCopy.CombatHealthDead;
             else
                 _healthText.text = string.Format(UiCopy.CombatHealthFormat, hp, max);
-        }
-
-        private static bool TryGetLocalAvatar(out PlayerAvatar avatar)
-        {
-            avatar = null;
-            foreach (var a in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (a.Object == null || !a.Object.IsValid || !a.HasInputAuthority)
-                    continue;
-
-                avatar = a;
-                return true;
-            }
-
-            return false;
         }
     }
 }

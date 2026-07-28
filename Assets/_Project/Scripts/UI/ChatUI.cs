@@ -260,7 +260,7 @@ namespace FusionMultiplayer.UI
 
         private static bool HasLocalAvatar()
         {
-            foreach (var avatar in UnityEngine.Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (avatar.Object != null && avatar.Object.IsValid && avatar.HasInputAuthority)
                     return true;
@@ -405,6 +405,12 @@ namespace FusionMultiplayer.UI
             ConnectionManager.NetworkPlayersChanged -= OnNetworkPlayersChanged;
             if (_pmChannel != null)
                 _pmChannel.ChannelChanged -= OnPmChannelChanged;
+
+            if (_chatComposeOpen || GameplayInputMode.ChatBlockingGameplay)
+            {
+                _chatComposeOpen = false;
+                GameplayInputMode.ChatBlockingGameplay = false;
+            }
         }
 
         private void OnNetworkPlayersChanged()
@@ -751,7 +757,7 @@ namespace FusionMultiplayer.UI
 
         private static string ResolveNick(PlayerRef sender)
         {
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == sender)
                     return pd.Nick.ToString();
@@ -765,7 +771,7 @@ namespace FusionMultiplayer.UI
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             if (runner != null)
             {
-                foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+                foreach (var pd in PlayerRegistry.EnumerateAllData())
                 {
                     if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
                         return pd.Nick.ToString();
@@ -780,7 +786,7 @@ namespace FusionMultiplayer.UI
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             if (runner != null)
             {
-                foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+                foreach (var pd in PlayerRegistry.EnumerateAllData())
                 {
                     if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == runner.LocalPlayer)
                         return pd.Tint;

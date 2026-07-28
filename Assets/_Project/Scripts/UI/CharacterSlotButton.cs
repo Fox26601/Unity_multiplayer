@@ -41,7 +41,7 @@ namespace FusionMultiplayer.UI
             if (_ownerLabel != null)
             {
                 if (owner == PlayerRef.None)
-                    _ownerLabel.text = "FREE";
+                    _ownerLabel.text = UiCopy.CharacterSlotFree;
                 else if (isLocalPlayer)
                     _ownerLabel.text = "YOU";
                 else

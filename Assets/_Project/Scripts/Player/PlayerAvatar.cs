@@ -91,6 +91,7 @@ namespace FusionMultiplayer.Player
 
             _baseTint = VisualTint;
             SetCorpseVisible(!IsDead);
+            PlayerRegistry.RegisterAvatar(this);
         }
 
         public override void FixedUpdateNetwork()
@@ -104,13 +105,8 @@ namespace FusionMultiplayer.Player
             }
         }
 
-        public void ApplyDamage(float amount, PlayerRef attacker)
-        {
-            RpcRegisterHit(amount, attacker, transform.position);
-        }
-
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        public void RpcRegisterHit(float damage, PlayerRef attacker, Vector3 hitOrigin)
+        /// <summary>Server-only hit application (projectile / weapon StateAuthority).</summary>
+        public void ApplyServerHit(float damage, PlayerRef attacker, Vector3 hitOrigin)
         {
             if (!HasStateAuthority || damage <= 0f || IsDead)
                 return;
@@ -128,13 +124,7 @@ namespace FusionMultiplayer.Player
             if (planar.sqrMagnitude > MaxHitDistance * MaxHitDistance)
                 return;
 
-            ApplyDamageInternal(GameManager.RollDamage(damage), attacker);
-        }
-
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        private void RpcApplyDamage(float amount, PlayerRef attacker)
-        {
-            RpcRegisterHit(amount, attacker, transform.position);
+            ApplyDamageInternal(CombatRules.RollDamage(damage), attacker);
         }
 
         private void ApplyDamageInternal(float amount, PlayerRef attacker)
@@ -177,7 +167,7 @@ namespace FusionMultiplayer.Player
                 return;
 
             var gm = GameManager.Instance;
-            if (gm != null && CharacterSlot >= 0 && CharacterSlot < 10)
+            if (gm != null && CharacterSlot >= 0 && CharacterSlot < PlayerRegistry.MaxCharacterSlots)
             {
                 var sp = gm.GetSpawnPoint(CharacterSlot);
                 transform.SetPositionAndRotation(sp.position, sp.rotation);
@@ -231,10 +221,7 @@ namespace FusionMultiplayer.Player
             if (pd == null)
                 return;
 
-            if (pd.HasStateAuthority)
-                pd.Score++;
-            else
-                pd.RpcAwardScore(1, player);
+            pd.ServerAwardScore(1);
         }
 
         private static void IncrementPlayerDeaths(PlayerRef player)
@@ -243,10 +230,7 @@ namespace FusionMultiplayer.Player
             if (pd == null)
                 return;
 
-            if (pd.HasStateAuthority)
-                pd.Deaths++;
-            else
-                pd.RpcRegisterDeath(1, player);
+            pd.ServerRegisterDeath(1);
         }
 
         private void PushFromLocalPlayerData()
@@ -308,6 +292,8 @@ namespace FusionMultiplayer.Player
 
         public override void Despawned(NetworkRunner runner, bool hasState)
         {
+            PlayerRegistry.UnregisterAvatar(this);
+
             var gm = GameManager.Instance;
             if (runner == null || gm == null || !runner.IsRunning || runner.IsShutdown)
             {
@@ -315,7 +301,7 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            if (CharacterSlot < 0 || CharacterSlot >= 10)
+            if (CharacterSlot < 0 || CharacterSlot >= PlayerRegistry.MaxCharacterSlots)
             {
                 base.Despawned(runner, hasState);
                 return;

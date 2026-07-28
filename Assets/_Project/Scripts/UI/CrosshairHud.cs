@@ -1,5 +1,4 @@
 using FusionMultiplayer.Core;
-using FusionMultiplayer.Player;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -64,7 +63,7 @@ namespace FusionMultiplayer.UI
             rt.anchoredPosition = anchoredPosition;
 
             var img = go.GetComponent<Image>();
-            img.color = new Color(1f, 1f, 1f, 0.9f);
+            img.color = UiTheme.Crosshair;
             img.raycastTarget = false;
         }
 
@@ -75,28 +74,14 @@ namespace FusionMultiplayer.UI
 
             SessionRuntime.Refresh();
 
-            if (!SessionRuntime.AllowsShoot || !TryGetLocalAvatar(out var avatar) || !avatar.IsAlive)
+            if (!SessionRuntime.AllowsShoot || !LocalPlayerHudCache.TryGetLocalAvatar(out var avatar) ||
+                !avatar.IsAlive)
             {
                 _root.SetActive(false);
                 return;
             }
 
             _root.SetActive(true);
-        }
-
-        private static bool TryGetLocalAvatar(out PlayerAvatar avatar)
-        {
-            avatar = null;
-            foreach (var a in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (a.Object == null || !a.Object.IsValid || !a.HasInputAuthority)
-                    continue;
-
-                avatar = a;
-                return true;
-            }
-
-            return false;
         }
     }
 }

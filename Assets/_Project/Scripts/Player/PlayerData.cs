@@ -1,4 +1,3 @@
-using System;
 using Fusion;
 using FusionMultiplayer.Core;
 using FusionMultiplayer.UI;
@@ -36,11 +35,19 @@ namespace FusionMultiplayer.Player
                 }
             }
 
+            PlayerRegistry.RegisterPlayerData(this);
+
             if (HasInputAuthority)
             {
                 var token = SessionData.EnsureReconnectToken();
                 RpcSubmitProfile(SessionData.Nickname ?? "Player", SessionData.Tint, token);
             }
+        }
+
+        public override void Despawned(NetworkRunner runner, bool hasState)
+        {
+            PlayerRegistry.UnregisterPlayerData(this);
+            base.Despawned(runner, hasState);
         }
 
         public override void FixedUpdateNetwork()
@@ -90,9 +97,11 @@ namespace FusionMultiplayer.Player
             Tint = tint;
             ReconnectToken = token;
             IsBotControlled = false;
+            PlayerRegistry.RegisterPlayerData(this);
+            PlayerRegistry.NotifyReconnectTokenChanged(this);
 
             if (GameManager.Instance != null)
-                GameManager.Instance.TryRestoreReconnect(player, token.ToString());
+                ReconnectService.RestorePlayer(Object.Runner, player, token.ToString());
         }
 
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -105,38 +114,8 @@ namespace FusionMultiplayer.Player
         }
 
         /// <summary>Nickname must be unique among active human players in the room.</summary>
-        private static bool IsNicknameTakenByOther(string requested, PlayerRef self)
-        {
-            var canonical = CanonicalNickname(requested);
-            if (string.IsNullOrEmpty(canonical))
-                return false;
-
-            foreach (var other in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (other == null || other.Object == null || !other.Object.IsValid)
-                    continue;
-                if (other.IsBotControlled)
-                    continue;
-
-                var owner = other.Object.InputAuthority;
-                if (owner == PlayerRef.None || owner == self)
-                    continue;
-
-                if (string.Equals(CanonicalNickname(other.Nick.ToString()), canonical,
-                        StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static string CanonicalNickname(string nick)
-        {
-            if (string.IsNullOrWhiteSpace(nick))
-                return string.Empty;
-
-            return nick.Trim();
-        }
+        private static bool IsNicknameTakenByOther(string requested, PlayerRef self) =>
+            PlayerRegistry.IsNicknameTakenByOther(requested, self);
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
         public void RpcRequestStartMatch()
@@ -145,24 +124,6 @@ namespace FusionMultiplayer.Player
                 return;
 
             ConnectionManager.Instance?.ServerStartMatch();
-        }
-
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        public void RpcAwardScore(int amount, PlayerRef expectedOwner)
-        {
-            if (amount <= 0 || !OwnsLogicalPlayer(expectedOwner))
-                return;
-
-            Score += amount;
-        }
-
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        public void RpcRegisterDeath(int amount, PlayerRef expectedOwner)
-        {
-            if (amount <= 0 || !OwnsLogicalPlayer(expectedOwner))
-                return;
-
-            Deaths += amount;
         }
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
@@ -181,10 +142,28 @@ namespace FusionMultiplayer.Player
             EndGameVote = option;
         }
 
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        public void RpcResetMatchStats(PlayerRef expectedOwner)
+        /// <summary>StateAuthority-only score mutation (combat server path).</summary>
+        public void ServerAwardScore(int amount)
         {
-            if (!HasStateAuthority || !OwnsLogicalPlayer(expectedOwner))
+            if (!HasStateAuthority || amount <= 0)
+                return;
+
+            Score += amount;
+        }
+
+        /// <summary>StateAuthority-only death counter mutation.</summary>
+        public void ServerRegisterDeath(int amount)
+        {
+            if (!HasStateAuthority || amount <= 0)
+                return;
+
+            Deaths += amount;
+        }
+
+        /// <summary>StateAuthority-only match reset (map vote restart).</summary>
+        public void ServerResetMatchStats()
+        {
+            if (!HasStateAuthority)
                 return;
 
             Score = 0;
@@ -193,32 +172,13 @@ namespace FusionMultiplayer.Player
             EndGameVote = NoEndGameVote;
         }
 
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        public void RpcClearEndGameVote(PlayerRef expectedOwner)
+        /// <summary>StateAuthority-only clear of end-game vote.</summary>
+        public void ServerClearEndGameVote()
         {
-            if (!HasStateAuthority || !OwnsLogicalPlayer(expectedOwner))
+            if (!HasStateAuthority)
                 return;
 
             EndGameVote = NoEndGameVote;
-        }
-
-        private bool OwnsLogicalPlayer(PlayerRef expectedOwner)
-        {
-            if (expectedOwner == PlayerRef.None || Object == null || !Object.IsValid)
-                return false;
-
-            if (Object.InputAuthority == expectedOwner)
-                return true;
-
-            // After disconnect InputAuthority is cleared; slot ownership still maps to the left player.
-            if (Object.InputAuthority != PlayerRef.None)
-                return false;
-
-            var gm = GameManager.Instance;
-            return gm != null &&
-                   CharacterIndex >= 0 &&
-                   CharacterIndex < 10 &&
-                   gm.GetCharacterOwner(CharacterIndex) == expectedOwner;
         }
     }
 }

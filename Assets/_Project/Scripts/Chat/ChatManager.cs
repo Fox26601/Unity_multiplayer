@@ -1,4 +1,5 @@
 using Fusion;
+using FusionMultiplayer.Core;
 using FusionMultiplayer.Player;
 using UnityEngine;
 
@@ -103,7 +104,7 @@ namespace FusionMultiplayer.Chat
 
         private static Color ResolveTint(PlayerRef sender)
         {
-            foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == sender)
                     return pd.Tint;

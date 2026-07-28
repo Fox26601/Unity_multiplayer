@@ -9,12 +9,12 @@ namespace FusionMultiplayer.Core
     /// <summary>
     /// Server-owned scene authority: character slots, match timer, votes, spawn, JSON config RPC.
     /// </summary>
-    public class GameManager : NetworkBehaviour, INetworkRunnerCallbacks, IAfterHostMigration
+    public class GameManager : NetworkBehaviour, IAfterHostMigration
     {
         public const float MatchDurationSeconds = 300f;
         public const float VoteDurationSeconds = 30f;
-        public const float CritChance = 0.18f;
-        public const float CritMultiplier = 1.75f;
+        public const float CritChance = CombatRules.CritChance;
+        public const float CritMultiplier = CombatRules.CritMultiplier;
 
         public const int VoteRestart = 0;
         public const int VoteArena = 1;
@@ -26,7 +26,7 @@ namespace FusionMultiplayer.Core
 
         [SerializeField] private NetworkObject _playerAvatarPrefab;
         [SerializeField] private NetworkObject _physicsPropPrefab;
-        [SerializeField] private Transform[] _spawnPoints = new Transform[10];
+        [SerializeField] private Transform[] _spawnPoints = new Transform[PlayerRegistry.MaxCharacterSlots];
 
         [Networked, Capacity(10)]
         private NetworkArray<PlayerRef> CharacterOwners => default;
@@ -44,10 +44,10 @@ namespace FusionMultiplayer.Core
         /// <summary>Last JSON match-config ack payload length (debug / assignment proof).</summary>
         [Networked] public int LastConfigJsonLength { get; set; }
 
-        private readonly PlayerRef[] _lastOwners = new PlayerRef[10];
+        private readonly PlayerRef[] _lastOwners = new PlayerRef[PlayerRegistry.MaxCharacterSlots];
         private bool _ownersSnapshotReady;
         private TickTimer _physicsPropTimer;
-        private readonly Dictionary<string, PlayerRef> _tokenToPlayer = new();
+        private GameManagerRunnerCallbacks _runnerCallbacks;
 
         public NetworkObject PlayerAvatarPrefab => _playerAvatarPrefab;
 
@@ -69,9 +69,16 @@ namespace FusionMultiplayer.Core
 
         public PlayerRef GetCharacterOwner(int index)
         {
-            if (index < 0 || index >= 10) return PlayerRef.None;
+            if (index < 0 || index >= PlayerRegistry.MaxCharacterSlots) return PlayerRef.None;
             if (Object == null || !Object.IsValid) return PlayerRef.None;
             return CharacterOwners.Get(index);
+        }
+
+        public void SetCharacterOwner(int index, PlayerRef player)
+        {
+            if (!CanMutateSlots || !HasStateAuthority) return;
+            if (index < 0 || index >= PlayerRegistry.MaxCharacterSlots) return;
+            CharacterOwners.Set(index, player);
         }
 
         private bool CanMutateSlots =>
@@ -145,7 +152,7 @@ namespace FusionMultiplayer.Core
             GameDiagnostics.LogSpawned(Object != null && Object.IsValid);
             if (HasStateAuthority)
             {
-                for (var i = 0; i < 10; i++)
+                for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
                     CharacterOwners.Set(i, PlayerRef.None);
                 IsGameOver = false;
                 VoteResolved = false;
@@ -158,7 +165,8 @@ namespace FusionMultiplayer.Core
             }
 
             _ownersSnapshotReady = false;
-            Runner.AddCallbacks(this);
+            _runnerCallbacks ??= new GameManagerRunnerCallbacks(this);
+            Runner.AddCallbacks(_runnerCallbacks);
             GameSceneReadiness.EnsureSubscribed();
             GameSceneReadiness.NotifyGameManagerReady(this);
         }
@@ -199,7 +207,7 @@ namespace FusionMultiplayer.Core
                 return;
 
             var changed = !_ownersSnapshotReady;
-            for (var i = 0; i < 10; i++)
+            for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
             {
                 var owner = CharacterOwners.Get(i);
                 if (!_ownersSnapshotReady || _lastOwners[i] != owner)
@@ -222,22 +230,24 @@ namespace FusionMultiplayer.Core
                 GameSceneReadiness.NotifyGameManagerLost();
             }
 
-            if (Runner != null) Runner.RemoveCallbacks(this);
+            if (Runner != null && _runnerCallbacks != null)
+                Runner.RemoveCallbacks(_runnerCallbacks);
             base.Despawned(runner, hasState);
         }
 
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            if (Runner != null) Runner.RemoveCallbacks(this);
+            if (Runner != null && _runnerCallbacks != null)
+                Runner.RemoveCallbacks(_runnerCallbacks);
         }
 
-        public void RequestCharacter(int index, PlayerRef requester)
+        public void RequestCharacter(int index)
         {
-            RPC_RequestCharacter(index, requester);
+            RPC_RequestCharacter(index);
         }
 
-        /// <summary>Client sends serialized MatchConfigDto JSON (≥3 fields) for server validation.</summary>
+        /// <summary>Client sends serialized MatchConfigDto JSON (≥3 fields) for server deserialize + ack.</summary>
         public void SubmitMatchConfigJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
@@ -262,13 +272,17 @@ namespace FusionMultiplayer.Core
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.PlayerToken))
-                _tokenToPlayer[dto.PlayerToken] = info.Source;
+            // Reclaim only when JSON token matches this peer's ConnectionToken.
+            if (!string.IsNullOrWhiteSpace(dto.PlayerToken) &&
+                SessionReconnectTokens.TryReadPlayerToken(Runner, info.Source, out var joinToken) &&
+                string.Equals(joinToken, dto.PlayerToken.Trim(), System.StringComparison.Ordinal))
+            {
+                TryRestoreReconnect(info.Source, joinToken);
+            }
 
             Debug.Log(
                 $"[FusionMultiplayer] Deserialized MatchConfigDto from {info.Source}: room={dto.RoomName}, max={dto.MaxPlayers}, mode={dto.GameMode}, map={dto.Map}, diff={dto.Difficulty}, nick={dto.Nickname}");
 
-            TryRestoreReconnect(info.Source, dto.PlayerToken);
             RPC_AckMatchConfigJson(info.Source, json.Length, dto.MaxPlayers, dto.Difficulty);
         }
 
@@ -284,10 +298,14 @@ namespace FusionMultiplayer.Core
         }
 
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-        private void RPC_RequestCharacter(int index, PlayerRef requester)
+        private void RPC_RequestCharacter(int index, RpcInfo info = default)
         {
             if (!CanMutateSlots || !HasStateAuthority) return;
-            if (index < 0 || index >= 10) return;
+            if (index < 0 || index >= PlayerRegistry.MaxCharacterSlots) return;
+
+            var requester = info.Source;
+            if (requester == PlayerRef.None)
+                return;
 
             var owner = CharacterOwners.Get(index);
             if (owner != PlayerRef.None && owner != requester)
@@ -296,8 +314,8 @@ namespace FusionMultiplayer.Core
                 return;
             }
 
-            // Reconnect: if requester already owns another slot, reject duplicate body.
-            for (var i = 0; i < 10; i++)
+            // Reconnect: if requester already owns another slot, clear duplicate body.
+            for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
             {
                 if (i == index) continue;
                 if (CharacterOwners.Get(i) == requester)
@@ -326,13 +344,11 @@ namespace FusionMultiplayer.Core
                 }
             }
 
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            var pd = PlayerRegistry.FindPlayerData(requester);
+            if (pd != null && pd.HasStateAuthority)
             {
-                if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == requester &&
-                    pd.HasStateAuthority)
-                {
-                    pd.CharacterIndex = index;
-                }
+                pd.CharacterIndex = index;
+                PlayerRegistry.RegisterPlayerData(pd);
             }
 
             RPC_CharacterApproved(requester, index, position, rotation);
@@ -356,7 +372,7 @@ namespace FusionMultiplayer.Core
         public void ClearSlotsForPlayer(PlayerRef player)
         {
             if (!CanMutateSlots || !HasStateAuthority) return;
-            for (var i = 0; i < 10; i++)
+            for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
             {
                 if (CharacterOwners.Get(i) == player)
                     CharacterOwners.Set(i, PlayerRef.None);
@@ -366,7 +382,7 @@ namespace FusionMultiplayer.Core
         public void ReleaseCharacterSlot(int index, PlayerRef player)
         {
             if (!CanMutateSlots || !HasStateAuthority) return;
-            if (index < 0 || index >= 10) return;
+            if (index < 0 || index >= PlayerRegistry.MaxCharacterSlots) return;
             if (CharacterOwners.Get(index) == player)
                 CharacterOwners.Set(index, PlayerRef.None);
         }
@@ -394,136 +410,39 @@ namespace FusionMultiplayer.Core
         }
 
         /// <summary>Server random decision #3: critical hit roll.</summary>
-        public static float RollDamage(float baseDamage)
-        {
-            var mult = 1f;
-            if (ConnectionManager.Instance != null &&
-                ConnectionManager.Instance.Runner != null &&
-                ConnectionManager.Instance.Runner.SessionInfo.IsValid &&
-                SessionCatalog.TryGetDifficulty(ConnectionManager.Instance.Runner.SessionInfo, out var diff))
-            {
-                mult = SessionCatalog.GetDamageMultiplier(diff);
-            }
-
-            var dmg = baseDamage * mult;
-            if (Random.value < CritChance)
-                dmg *= CritMultiplier;
-            return dmg;
-        }
+        public static float RollDamage(float baseDamage) => CombatRules.RollDamage(baseDamage);
 
         private void TrySpawnPhysicsProp()
         {
-            EnsurePhysicsPropPrefab();
             if (_physicsPropPrefab == null || Runner == null)
                 return;
 
-            GetRandomizedSpawn(Random.Range(0, 10), out var pos, out _);
+            GetRandomizedSpawn(Random.Range(0, PlayerRegistry.MaxCharacterSlots), out var pos, out _);
             pos.y += 3f;
             Runner.Spawn(_physicsPropPrefab, pos, Quaternion.identity, null);
         }
 
         private void EnsurePhysicsPropPrefab()
         {
-            if (_physicsPropPrefab != null)
-                return;
-
-#if UNITY_EDITOR
-            _physicsPropPrefab =
-                UnityEditor.AssetDatabase.LoadAssetAtPath<NetworkObject>(
-                    "Assets/_Project/Prefabs/PhysicsProp.prefab");
-#endif
+            // Prefab must be assigned in the scene / via Tools → Wire PhysicsProp And Boot Only.
+            if (_physicsPropPrefab == null)
+                Debug.LogWarning("[FusionMultiplayer] PhysicsProp prefab is not assigned on GameManager.");
         }
 
         public void TryRestoreReconnect(PlayerRef player, string token)
         {
-            if (string.IsNullOrWhiteSpace(token) || !HasStateAuthority)
+            if (!HasStateAuthority || Runner == null)
                 return;
 
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.ReconnectToken.ToString() != token)
-                    continue;
-
-                var oldOwner = pd.Object.InputAuthority;
-                if (oldOwner != PlayerRef.None &&
-                    oldOwner != player &&
-                    !pd.IsBotControlled &&
-                    IsActivePlayer(oldOwner))
-                    continue;
-
-                // Prefer avatar still owned by previous ref; also scan bots by character slot.
-                var avatar = PlayerOwnership.FindAvatar(oldOwner) ??
-                             PlayerOwnership.FindAvatar(player) ??
-                             FindAvatarBySlot(pd.CharacterIndex);
-                if (avatar != null && avatar.Object != null && avatar.Object.IsValid)
-                {
-                    avatar.Object.AssignInputAuthority(player);
-                    if (avatar.CharacterSlot >= 0 && avatar.CharacterSlot < 10)
-                        CharacterOwners.Set(avatar.CharacterSlot, player);
-
-                    var brain = avatar.GetComponent<BotBrain>();
-                    if (brain != null)
-                        brain.Deactivate();
-                }
-
-                if (pd.Object.InputAuthority != player)
-                    pd.Object.AssignInputAuthority(player);
-
-                if (pd.HasStateAuthority)
-                    pd.IsBotControlled = false;
-
-                Debug.Log($"[FusionMultiplayer] Restored avatar/control for reconnect player {player.PlayerId}");
-                return;
-            }
+            ReconnectService.RestorePlayer(Runner, player, token);
         }
 
-        private bool IsActivePlayer(PlayerRef player)
-        {
-            if (Runner == null || player == PlayerRef.None)
-                return false;
-
-            foreach (var active in Runner.ActivePlayers)
-            {
-                if (active == player)
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static PlayerAvatar FindAvatarBySlot(int slot)
-        {
-            if (slot < 0 || slot >= 10)
-                return null;
-
-            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (avatar.Object != null && avatar.Object.IsValid && avatar.CharacterSlot == slot)
-                    return avatar;
-            }
-
-            return null;
-        }
-
-        private static PlayerAvatar FindAvatarFor(PlayerRef player)
-        {
-            if (player == PlayerRef.None)
-                return null;
-
-            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (avatar.Object != null && avatar.Object.IsValid && avatar.Object.InputAuthority == player)
-                    return avatar;
-            }
-
-            return null;
-        }
+        private static PlayerAvatar FindAvatarFor(PlayerRef player) =>
+            PlayerOwnership.FindAvatar(player);
 
         private void DespawnAvatarsFor(PlayerRef player)
         {
-            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (avatar.Object == null || !avatar.Object.IsValid)
                     continue;
@@ -538,7 +457,8 @@ namespace FusionMultiplayer.Core
             if (!HasStateAuthority || VoteResolved)
                 return;
 
-            CountPlayersAndVotes(out var connected, out var voted, out var counts, out var totalVotes);
+            EndGameVoteResolver.CountPlayersAndVotes(out var connected, out var voted, out var counts,
+                out var totalVotes);
             var allVoted = connected > 0 && voted >= connected;
             var timerDone = VoteTimer.ExpiredOrNotRunning(Runner);
 
@@ -551,54 +471,8 @@ namespace FusionMultiplayer.Core
                 return;
             }
 
-            var winningOption = PickWinningOption(counts, totalVotes);
+            var winningOption = EndGameVoteResolver.PickWinningOption(counts, totalVotes);
             ApplyVoteResult(ResolveMapFromVote(winningOption, GetCurrentMap()));
-        }
-
-        private static void CountPlayersAndVotes(out int connected, out int voted, out int[] counts, out int totalVotes)
-        {
-            connected = 0;
-            voted = 0;
-            totalVotes = 0;
-            counts = new int[VoteOptionCount];
-
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-
-                connected++;
-                var vote = pd.EndGameVote;
-                if (!IsValidVoteOption(vote))
-                    continue;
-
-                voted++;
-                totalVotes++;
-                counts[vote]++;
-            }
-        }
-
-        private static int PickWinningOption(int[] counts, int totalVotes)
-        {
-            var max = -1;
-            for (var i = 0; i < counts.Length; i++)
-            {
-                if (counts[i] > max)
-                    max = counts[i];
-            }
-
-            var top = new List<int>(VoteOptionCount);
-            for (var i = 0; i < counts.Length; i++)
-            {
-                if (counts[i] == max)
-                    top.Add(i);
-            }
-
-            if (top.Count == 1 && counts[top[0]] * 2 > totalVotes)
-                return top[0];
-
-            // Server random tie-break.
-            return top[Random.Range(0, top.Count)];
         }
 
         private SessionCatalog.MapKind GetCurrentMap()
@@ -634,28 +508,18 @@ namespace FusionMultiplayer.Core
 
         private void ResetMatchScoresAndSlots()
         {
-            for (var i = 0; i < 10; i++)
+            for (var i = 0; i < PlayerRegistry.MaxCharacterSlots; i++)
                 CharacterOwners.Set(i, PlayerRef.None);
 
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid)
                     continue;
 
-                if (pd.HasStateAuthority)
-                {
-                    pd.Score = 0;
-                    pd.Deaths = 0;
-                    pd.CharacterIndex = -1;
-                    pd.EndGameVote = PlayerData.NoEndGameVote;
-                }
-                else
-                {
-                    pd.RpcResetMatchStats(pd.Object.InputAuthority);
-                }
+                pd.ServerResetMatchStats();
             }
 
-            foreach (var avatar in FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
+            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
             {
                 if (avatar.Object == null || !avatar.Object.IsValid || Runner == null)
                     continue;
@@ -666,116 +530,114 @@ namespace FusionMultiplayer.Core
 
         private static void ResetAllEndGameVotes()
         {
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object == null || !pd.Object.IsValid)
                     continue;
 
-                if (pd.HasStateAuthority)
-                    pd.EndGameVote = PlayerData.NoEndGameVote;
-                else
-                    pd.RpcClearEndGameVote(pd.Object.InputAuthority);
+                pd.ServerClearEndGameVote();
             }
         }
 
-        #region INetworkRunnerCallbacks
+        #region Runner callbacks
 
-        public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+        private sealed class GameManagerRunnerCallbacks : INetworkRunnerCallbacks
         {
-            if (HasStateAuthority)
-                CharacterSelectBridge.NotifySlotsChanged();
-        }
+            private readonly GameManager _owner;
 
-        public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-        {
-            // Slots stay occupied so a bot can take over the avatar.
-            if (HasStateAuthority)
-                CharacterSelectBridge.NotifySlotsChanged();
-        }
+            public GameManagerRunnerCallbacks(GameManager owner) => _owner = owner;
 
-        public void OnInput(NetworkRunner runner, NetworkInput input)
-        {
-        }
+            public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+            {
+                if (_owner != null && _owner.HasStateAuthority)
+                    CharacterSelectBridge.NotifySlotsChanged();
+            }
 
-        public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input)
-        {
-        }
+            public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+            {
+                if (_owner != null && _owner.HasStateAuthority)
+                    CharacterSelectBridge.NotifySlotsChanged();
+            }
 
-        public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
-        {
-        }
+            public void OnInput(NetworkRunner runner, NetworkInput input)
+            {
+            }
 
-        public void OnConnectedToServer(NetworkRunner runner)
-        {
-        }
+            public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input)
+            {
+            }
 
-        public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
-        {
-        }
+            public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
+            {
+            }
 
-        public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request,
-            byte[] token)
-        {
-        }
+            public void OnConnectedToServer(NetworkRunner runner)
+            {
+            }
 
-        public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-        {
-        }
+            public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
+            {
+            }
 
-        public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message)
-        {
-        }
+            public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request,
+                byte[] token)
+            {
+            }
 
-        public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
-        {
-        }
+            public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress,
+                NetConnectFailedReason reason)
+            {
+            }
 
-        public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data)
-        {
-        }
+            public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message)
+            {
+            }
 
-        public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken)
-        {
-            if (runner != null)
-                runner.AddCallbacks(this);
-        }
+            public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
+            {
+            }
 
-        public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key,
-            System.ArraySegment<byte> data)
-        {
-        }
+            public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data)
+            {
+            }
 
-        public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress)
-        {
-        }
+            public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken)
+            {
+                // Not used for Dedicated/Host coursework; avoid duplicate callback registration.
+                if (runner == null || _owner == null || _owner._runnerCallbacks == null)
+                    return;
 
-        public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
-        {
-        }
+                runner.RemoveCallbacks(_owner._runnerCallbacks);
+                runner.AddCallbacks(_owner._runnerCallbacks);
+                _owner.AfterHostMigration();
+            }
 
-        public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
-        {
-        }
+            public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key,
+                System.ArraySegment<byte> data)
+            {
+            }
 
-        public void OnSceneLoadDone(NetworkRunner runner)
-        {
-        }
+            public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress)
+            {
+            }
 
-        public void OnSceneLoadStart(NetworkRunner runner)
-        {
+            public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
+            {
+            }
+
+            public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
+            {
+            }
+
+            public void OnSceneLoadDone(NetworkRunner runner)
+            {
+            }
+
+            public void OnSceneLoadStart(NetworkRunner runner)
+            {
+            }
         }
 
         #endregion
-    }
-
-    public static class CharacterSelectBridge
-    {
-        public static System.Action<int, Vector3, Quaternion> Approved;
-        public static System.Action<int> Rejected;
-        public static System.Action SlotsChanged;
-
-        public static void NotifyApproved(int index, Vector3 pos, Quaternion rot) => Approved?.Invoke(index, pos, rot);
-        public static void NotifyRejected(int index) => Rejected?.Invoke(index);
-        public static void NotifySlotsChanged() => SlotsChanged?.Invoke();
     }
 }

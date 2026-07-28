@@ -258,26 +258,6 @@ namespace FusionMultiplayer.UI
             }
         }
 
-        /// <summary>Re-apply compact dropdown styles after ApplyHierarchy (v11 PM row).</summary>
-        public static void ReapplyChatDropdownStyles(Transform chatPanel)
-        {
-            if (chatPanel == null) return;
-
-            var dropdown = chatPanel.Find("ChatPmRow/WhisperDropdown");
-            if (dropdown != null)
-                ApplyDropdownTextStyles(dropdown);
-
-            var template = chatPanel.Find(
-                $"ChatPmRow/WhisperDropdown/{UiRuntimeBuildKit.WhisperDropdownTemplateName}");
-            if (template != null)
-                ApplyDropdownTextStyles(template);
-
-            // Legacy v18–19: template reparented to canvas root.
-            var canvasTemplate = chatPanel.parent?.Find(UiRuntimeBuildKit.WhisperDropdownTemplateName);
-            if (canvasTemplate != null)
-                ApplyDropdownTextStyles(canvasTemplate);
-        }
-
         private static void ApplyDropdownTextStyles(Transform root)
         {
             foreach (var text in root.GetComponentsInChildren<TMP_Text>(true))

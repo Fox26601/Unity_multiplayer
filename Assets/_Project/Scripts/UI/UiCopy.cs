@@ -23,11 +23,19 @@ namespace FusionMultiplayer.UI
         public const string DifficultyLabel = "Difficulty";
         public static string JoinRoomFailed(string detail) =>
             $"Could not join room: {detail}";
+        public const string JoinRoomClosed =
+            "That match already started. Use Reconnect to last room if you were in it, or wait for a new lobby.";
+        public const string ConnectionManagerMissing =
+            "ConnectionManager is missing — reopen 00_MainMenu (or press Play from 00_Boot).";
+        public const string ReconnectFailed =
+            "Reconnect failed. The host may have left, or your session token is no longer valid.";
         public const string QuickJoinNoMatch =
             "No open rooms match the selected mode / map / difficulty.";
         public static string QuickJoinNoMatchDetail(string filters) =>
             $"No open rooms match {filters}. On Join room, set the same mode/map/difficulty as the host.";
         public const string DisconnectNoticePrefix = "Disconnected: ";
+        public const string DisconnectedByServer =
+            "Disconnected by server (nickname taken or join refused). Change your nickname and try again.";
         public const string ReconnectPrompt =
             "Previous session found. Press Reconnect to restore control.";
         public const string CareerStatsTitle = "CAREER STATS";
@@ -69,6 +77,8 @@ namespace FusionMultiplayer.UI
             "Could not join session lobby. Check Photon AppId / network, then press Refresh.";
 
         public const string LobbyTitle = "LOBBY";
+        public const string LobbyLeave = "Leave lobby";
+        public const string LobbyStartButton = "START GAME";
         public const string LobbySessionInfoFormat = "Mode: {0}  ·  Map: {1}";
         public const string LobbySessionStarted = "This session is IN PROGRESS — new players cannot join.";
         public const string LobbyPlayersWaiting = "ROOM PLAYERS\n\nConnecting to session...";
@@ -82,6 +92,9 @@ namespace FusionMultiplayer.UI
 
         public const string CharacterSelectPrompt =
             "Pick a character slot (0–9). Each slot has its own spawn point.";
+        public const string CharacterSlotFree = "FREE";
+        public const string ChatPanelTitle = "CHAT";
+        public const string ChatSendButton = "Send";
         public const string CharacterSelectNotConnected =
             "Not connected — return to the main menu and join a session.";
         public const string CharacterSelectWaitingForGame =
@@ -160,7 +173,5 @@ namespace FusionMultiplayer.UI
         public const string PauseLeave = "Leave to main menu";
         public const string PauseControls =
             "WASD move · Mouse look · LMB shoot · E/Q build · Tab scores · Enter chat · Esc pause";
-
-        public const string LobbyLeave = "Leave lobby";
     }
 }

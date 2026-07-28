@@ -64,19 +64,10 @@ namespace FusionMultiplayer.UI
             if (existing != null)
                 Destroy(existing.gameObject);
 
-            var overlayGo = new GameObject("CareerStatsOverlay", typeof(RectTransform), typeof(CanvasRenderer),
-                typeof(Image), typeof(Button));
-            overlayGo.transform.SetParent(parent, false);
-            var overlayRt = overlayGo.GetComponent<RectTransform>();
-            overlayRt.anchorMin = Vector2.zero;
-            overlayRt.anchorMax = Vector2.one;
-            overlayRt.offsetMin = Vector2.zero;
-            overlayRt.offsetMax = Vector2.zero;
-
+            var overlayGo = UiRuntimeBuildKit.CreateDimOverlay(parent, "CareerStatsOverlay",
+                new Color(0f, 0f, 0f, 0.55f));
+            overlayGo.AddComponent<Button>();
             var overlayImage = overlayGo.GetComponent<Image>();
-            overlayImage.color = new Color(0f, 0f, 0f, 0.55f);
-            overlayImage.raycastTarget = true;
-
             var overlayButton = overlayGo.GetComponent<Button>();
             overlayButton.targetGraphic = overlayImage;
             overlayButton.transition = Selectable.Transition.None;

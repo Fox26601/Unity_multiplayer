@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Fusion;
 using Fusion.Sockets;
@@ -31,12 +32,14 @@ namespace FusionMultiplayer.Core
 
         private NetworkRunner _runner;
         private readonly List<SessionInfo> _sessionList = new();
-        private SessionCatalog.GameModeKind _lobbyGameMode = SessionCatalog.GameModeKind.Build;
+        private SessionCatalog.GameModeKind _lobbyGameMode = SessionCatalog.GameModeKind.Sandbox;
         private bool _inSessionLobby;
         private bool _intentionalShutdown;
         private string _activeRoomName = string.Empty;
         private Task<bool> _lobbyJoinTask;
         private SessionCatalog.GameModeKind _lobbyJoinMode;
+        private Task<bool> _sessionStartTask;
+        private CancellationTokenSource _lifecycleCts;
 
         public NetworkRunner Runner => _runner;
         public IReadOnlyList<SessionInfo> CachedSessionList => _sessionList;
@@ -81,7 +84,10 @@ namespace FusionMultiplayer.Core
         {
             if (Instance == this)
             {
-                MppmSessionBridge.ClearRoom();
+#if UNITY_EDITOR
+                if (MppmUtility.IsMainInstance)
+#endif
+                    MppmSessionBridge.ClearRoom();
                 Instance = null;
             }
         }
@@ -130,8 +136,7 @@ namespace FusionMultiplayer.Core
         }
 
         /// <summary>
-        /// Ensures lobby membership. Does not force a re-join when already connected —
-        /// Photon pushes list updates; re-joining while JoiningLobby causes Fusion errors.
+        /// Ensures lobby membership. Photon pushes list updates; re-joining while JoiningLobby causes errors.
         /// </summary>
         public Task<bool> RefreshSessionLobbyAsync(SessionCatalog.GameModeKind mode) =>
             EnsureSessionLobbyAsync(mode);
@@ -204,9 +209,22 @@ namespace FusionMultiplayer.Core
             StartSessionAsync(roomName, createIfMissing: false, isReconnect: true);
 
         /// <summary>Starts Host (create), Client (join), or Dedicated Server session.</summary>
-        public async Task<bool> StartSessionAsync(string roomName, bool createIfMissing,
+        public Task<bool> StartSessionAsync(string roomName, bool createIfMissing,
             bool dedicated = false, bool isReconnect = false)
         {
+            if (_sessionStartTask != null && !_sessionStartTask.IsCompleted)
+                return _sessionStartTask;
+
+            _sessionStartTask = StartSessionInternalAsync(roomName, createIfMissing, dedicated, isReconnect);
+            return _sessionStartTask;
+        }
+
+        private async Task<bool> StartSessionInternalAsync(string roomName, bool createIfMissing,
+            bool dedicated, bool isReconnect)
+        {
+            BeginLifecycleOperation();
+            var ct = _lifecycleCts.Token;
+
             if (string.IsNullOrWhiteSpace(roomName))
             {
                 var msg = "Room name is empty.";
@@ -225,6 +243,9 @@ namespace FusionMultiplayer.Core
                 try { await _lobbyJoinTask; }
                 catch { /* StartGame path continues */ }
             }
+
+            if (ct.IsCancellationRequested)
+                return false;
 
             EnsureRunnerComponent(provideInput: !dedicated);
 
@@ -272,8 +293,13 @@ namespace FusionMultiplayer.Core
                 ConnectionToken = dedicated || offline ? null : connectionToken
             });
 
+            if (ct.IsCancellationRequested)
+            {
+                await DisposeRunnerAsync();
+                return false;
+            }
+
             _inSessionLobby = false;
-            // Keep _lobbyJoinTask until StartGame finishes so concurrent lobby refreshes await it.
 
             if (!result.Ok)
             {
@@ -281,7 +307,13 @@ namespace FusionMultiplayer.Core
                 Debug.LogWarning($"StartGame failed: {msg}");
                 SessionFailed?.Invoke(msg);
                 await DisposeRunnerAsync();
-                MppmSessionBridge.ClearRoom();
+                // Only the host/main editor owns the MPPM room file — clones must not clear it on join fail.
+                if (createIfMissing
+#if UNITY_EDITOR
+                    || MppmUtility.IsMainInstance
+#endif
+                   )
+                    MppmSessionBridge.ClearRoom();
                 return false;
             }
 
@@ -421,15 +453,24 @@ namespace FusionMultiplayer.Core
             _runner.LoadScene(SceneRef.FromIndex(SessionCatalog.GetSceneBuildIndex(map)));
         }
 
-        public async Task ShutdownToMainMenuAsync()
+        public async Task ShutdownToMainMenuAsync(bool clearReconnect = true)
         {
             _intentionalShutdown = true;
-            SessionReconnectStore.Clear();
-            MppmSessionBridge.ClearRoom();
+            CancelLifecycleOperations();
+            GameplayInputMode.ChatBlockingGameplay = false;
+            GameplayInputMode.SetMenu();
+
+            if (clearReconnect)
+                SessionReconnectStore.Clear();
+#if UNITY_EDITOR
+            if (MppmUtility.IsMainInstance)
+#endif
+                MppmSessionBridge.ClearRoom();
             _activeRoomName = string.Empty;
             await DisposeRunnerAsync();
             _sessionList.Clear();
             SceneManager.LoadScene(SceneIndices.MainMenu);
+            GameplayInputMode.SetMenu();
         }
 
         /// <summary>Client: store error, leave session, reload Main Menu.</summary>
@@ -439,28 +480,69 @@ namespace FusionMultiplayer.Core
                 reason = UiCopy.NicknameTaken;
 
             SessionData.SetSessionError(reason);
-            SessionFailed?.Invoke(reason);
+
             if (Instance != null)
-                _ = Instance.ShutdownToMainMenuAsync();
+            {
+                // Prevent OnDisconnectedFromServer from overwriting the nick message with "Disconnected: Requested".
+                Instance._intentionalShutdown = true;
+                SessionFailed?.Invoke(reason);
+                _ = Instance.ShutdownToMainMenuAsync(clearReconnect: true);
+            }
+            else
+            {
+                SessionFailed?.Invoke(reason);
+            }
         }
 
-        /// <summary>Server: drop a joining player after nickname reject (RPC already sent).</summary>
+        /// <summary>
+        /// Server: drop a joining player after nickname reject.
+        /// Delays Disconnect so RpcNicknameRejected can flush before the PlayerData object is torn down.
+        /// </summary>
         public void RejectJoiningPlayer(PlayerRef player, NetworkObject playerDataObject)
         {
             if (_runner == null || !NetworkAuthority.IsServerOrHost(_runner) || player == PlayerRef.None)
                 return;
 
-            if (playerDataObject != null && playerDataObject.IsValid)
-                _runner.Despawn(playerDataObject);
+            StartCoroutine(RejectJoiningPlayerAfterRpcFlush(player, playerDataObject));
+        }
+
+        private System.Collections.IEnumerator RejectJoiningPlayerAfterRpcFlush(PlayerRef player,
+            NetworkObject playerDataObject)
+        {
+            // Fusion needs a few ticks to deliver the targeted reject RPC before Despawn/Disconnect.
+            for (var i = 0; i < 12; i++)
+                yield return null;
+
+            if (_runner == null)
+                yield break;
 
             if (IsPlayerStillConnected(_runner, player))
                 _runner.Disconnect(player);
+
+            if (playerDataObject != null && playerDataObject.IsValid)
+                _runner.Despawn(playerDataObject);
+        }
+
+        private static bool IsPlayerStillConnected(NetworkRunner runner, PlayerRef player)
+        {
+            if (runner == null || player == PlayerRef.None)
+                return false;
+
+            foreach (var active in runner.ActivePlayers)
+            {
+                if (active == player)
+                    return true;
+            }
+
+            return false;
         }
 
         private async Task DisposeRunnerAsync()
         {
+            CancelLifecycleOperations();
             _inSessionLobby = false;
             _activeRoomName = string.Empty;
+            PlayerRegistry.Clear();
 
             if (_runner == null)
                 return;
@@ -479,6 +561,24 @@ namespace FusionMultiplayer.Core
             {
                 Destroy(_runner);
                 _runner = null;
+            }
+        }
+
+        private void BeginLifecycleOperation()
+        {
+            CancelLifecycleOperations();
+            _lifecycleCts?.Dispose();
+            _lifecycleCts = new CancellationTokenSource();
+        }
+
+        private void CancelLifecycleOperations()
+        {
+            try
+            {
+                _lifecycleCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
 
@@ -501,22 +601,11 @@ namespace FusionMultiplayer.Core
 
             if (NetworkAuthority.IsServerOrHost(runner))
             {
-                var restored = false;
-                if (SessionReconnectTokens.TryReadPlayerToken(runner, player, out var token) &&
-                    !string.IsNullOrWhiteSpace(token))
-                {
-                    restored = TryRestorePlayerByToken(runner, player, token);
-                    if (GameManager.Instance != null)
-                        GameManager.Instance.TryRestoreReconnect(player, token);
-                }
-
-                if (!restored)
-                    TrySpawnPlayerDataFor(runner, player);
-
+                ProvisionPlayer(runner, player);
                 ValidateJoiningPlayer(runner, player);
             }
 
-            ProvisionGameSceneIfNeeded(runner, "OnPlayerJoined");
+            ProvisionAllPlayersForCurrentScene(runner, "OnPlayerJoined");
         }
 
         public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
@@ -525,7 +614,14 @@ namespace FusionMultiplayer.Core
             RemotePlayerLeft?.Invoke(player);
 
             if (NetworkAuthority.IsServerOrHost(runner))
+            {
+                // Keep reconnect token indexed after Fusion clears InputAuthority.
+                var pd = PlayerOwnership.FindPlayerData(player);
+                if (pd != null)
+                    PlayerRegistry.NotifyReconnectTokenChanged(pd);
+
                 BotTakeover.TryReplaceDisconnectedPlayer(runner, player);
+            }
         }
 
         public void OnInput(NetworkRunner runner, NetworkInput input)
@@ -564,13 +660,18 @@ namespace FusionMultiplayer.Core
             if (_intentionalShutdown)
                 return;
 
-            // Nickname reject already stored SessionData.SessionError — do not overwrite it.
-            if (!string.IsNullOrWhiteSpace(SessionData.SessionError))
-                return;
+            // Nickname reject already stored SessionData.SessionError — keep that text, still leave the lobby.
+            if (string.IsNullOrWhiteSpace(SessionData.SessionError))
+            {
+                var msg = FormatNetDisconnectReason(reason);
+                SessionData.SetSessionError(msg);
+                LocalDisconnectNotice?.Invoke(msg);
+                SessionFailed?.Invoke(msg);
+            }
 
-            var msg = $"Disconnected: {reason}";
-            LocalDisconnectNotice?.Invoke(msg);
-            SessionFailed?.Invoke(msg);
+            // Always leave a broken lobby/session. Keep reconnect token if we were in a match.
+            var inMatch = SceneIndices.IsGameScene(SceneManager.GetActiveScene().buildIndex);
+            _ = ShutdownToMainMenuAsync(clearReconnect: !inMatch);
         }
 
         public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request,
@@ -656,12 +757,8 @@ namespace FusionMultiplayer.Core
             SceneLoaded?.Invoke(scene.name);
 
             var idx = scene.buildIndex;
-            if ((SceneIndices.IsGameScene(idx) || idx == SceneIndices.Lobby) &&
-                NetworkAuthority.IsServerOrHost(runner))
-            {
-                foreach (var player in runner.ActivePlayers)
-                    TrySpawnPlayerDataFor(runner, player);
-            }
+            if (SceneIndices.IsGameScene(idx) || idx == SceneIndices.Lobby)
+                ProvisionAllPlayersForCurrentScene(runner, "OnSceneLoadDone");
 
             if (SceneIndices.IsGameScene(idx))
             {
@@ -680,6 +777,21 @@ namespace FusionMultiplayer.Core
             Debug.Log($"[FusionMultiplayer] Server validated join for player {player.PlayerId}");
         }
 
+        private void ProvisionPlayer(NetworkRunner runner, PlayerRef player)
+        {
+            if (runner == null || player == PlayerRef.None || !NetworkAuthority.IsServerOrHost(runner))
+                return;
+
+            if (SessionReconnectTokens.TryReadPlayerToken(runner, player, out var token) &&
+                !string.IsNullOrWhiteSpace(token) &&
+                ReconnectService.RestorePlayer(runner, player, token))
+            {
+                return;
+            }
+
+            TrySpawnPlayerDataFor(runner, player);
+        }
+
         private void TrySpawnPlayerDataFor(NetworkRunner runner, PlayerRef player)
         {
             if (_playerDataPrefab == null)
@@ -691,7 +803,10 @@ namespace FusionMultiplayer.Core
             if (!NetworkAuthority.IsServerOrHost(runner))
                 return;
 
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+            if (PlayerRegistry.FindPlayerData(player) != null)
+                return;
+
+            foreach (var pd in PlayerRegistry.EnumerateAllData())
             {
                 if (pd.Object != null && pd.Object.IsValid && pd.Object.InputAuthority == player)
                     return;
@@ -700,95 +815,30 @@ namespace FusionMultiplayer.Core
             runner.Spawn(_playerDataPrefab, Vector3.zero, Quaternion.identity, player);
         }
 
-        /// <summary>
-        /// Reclaims PlayerData for a reconnecting client when the token matches a free seat
-        /// (bot / no owner). Does not take over another connected player's profile.
-        /// </summary>
-        private static bool TryRestorePlayerByToken(NetworkRunner runner, PlayerRef player, string token)
-        {
-            if (runner == null || string.IsNullOrWhiteSpace(token))
-                return false;
-
-            foreach (var pd in FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.ReconnectToken.ToString() != token)
-                    continue;
-
-                var oldOwner = pd.Object.InputAuthority;
-                if (oldOwner == player)
-                    return true;
-
-                if (!CanReclaimSeat(runner, pd, oldOwner))
-                    continue;
-
-                pd.Object.AssignInputAuthority(player);
-                if (pd.HasStateAuthority)
-                {
-                    pd.IsBotControlled = false;
-                    var nick = pd.Nick.ToString();
-                    if (nick.StartsWith("BOT "))
-                        pd.Nick = nick.Substring(4);
-                }
-
-                Debug.Log($"[FusionMultiplayer] Restored PlayerData for reconnect token (player {player.PlayerId})");
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool CanReclaimSeat(NetworkRunner runner, PlayerData pd, PlayerRef oldOwner)
-        {
-            if (pd.IsBotControlled || oldOwner == PlayerRef.None)
-                return true;
-
-            return !IsPlayerStillConnected(runner, oldOwner);
-        }
-
-        private static bool IsPlayerStillConnected(NetworkRunner runner, PlayerRef player)
-        {
-            if (runner == null || player == PlayerRef.None)
-                return false;
-
-            foreach (var active in runner.ActivePlayers)
-            {
-                if (active == player)
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static void ProvisionGameSceneIfNeeded(NetworkRunner runner, string reason)
+        /// <summary>Ensures every active player has PlayerData (and reconnect restore) for the current scene.</summary>
+        private void ProvisionAllPlayersForCurrentScene(NetworkRunner runner, string reason)
         {
             if (runner == null || !runner.IsRunning)
                 return;
 
-            if (!SceneIndices.IsGameScene(SceneManager.GetActiveScene().buildIndex))
+            var idx = SceneManager.GetActiveScene().buildIndex;
+            if (!SceneIndices.IsGameScene(idx) && idx != SceneIndices.Lobby)
                 return;
 
             if (Instance == null)
                 return;
 
-            GameDiagnostics.LogLateJoinProvision(reason);
+            if (SceneIndices.IsGameScene(idx))
+                GameDiagnostics.LogLateJoinProvision(reason);
+
             if (NetworkAuthority.IsServerOrHost(runner))
             {
                 foreach (var player in runner.ActivePlayers)
-                {
-                    if (SessionReconnectTokens.TryReadPlayerToken(runner, player, out var token) &&
-                        TryRestorePlayerByToken(runner, player, token))
-                    {
-                        GameManager.Instance?.TryRestoreReconnect(player, token);
-                        continue;
-                    }
-
-                    Instance.TrySpawnPlayerDataFor(runner, player);
-                }
+                    ProvisionPlayer(runner, player);
             }
 
-            GameSceneReadiness.EvaluateNow();
+            if (SceneIndices.IsGameScene(idx))
+                GameSceneReadiness.EvaluateNow();
         }
 
         private static string FormatShutdownReason(ShutdownReason reason)
@@ -810,6 +860,15 @@ namespace FusionMultiplayer.Core
             if (text.IndexOf("Auth", StringComparison.OrdinalIgnoreCase) >= 0)
                 return UiCopy.PhotonAuthFailed;
             return text;
+        }
+
+        private static string FormatNetDisconnectReason(NetDisconnectReason reason)
+        {
+            // Server Disconnect() after nickname reject — if RPC was lost, still avoid raw enum spam.
+            if (reason == NetDisconnectReason.Requested)
+                return UiCopy.DisconnectedByServer;
+
+            return $"Disconnected: {reason}";
         }
 
         private static string FormatStartGameError(StartGameResult result)
@@ -835,8 +894,10 @@ namespace FusionMultiplayer.Core
                        "For local testing: Tools → Fusion Multiplayer → Enable Offline Play (No Photon).";
             }
 
-            if (combined.IndexOf("GameClosed", StringComparison.OrdinalIgnoreCase) >= 0
-                || combined.IndexOf("GameFull", StringComparison.OrdinalIgnoreCase) >= 0
+            if (combined.IndexOf("GameClosed", StringComparison.OrdinalIgnoreCase) >= 0)
+                return UiCopy.JoinRoomClosed;
+
+            if (combined.IndexOf("GameFull", StringComparison.OrdinalIgnoreCase) >= 0
                 || combined.IndexOf("GameDoesNotExist", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return UiCopy.JoinRoomFailed(combined);

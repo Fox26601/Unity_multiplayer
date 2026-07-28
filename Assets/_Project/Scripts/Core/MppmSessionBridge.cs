@@ -34,7 +34,8 @@ namespace FusionMultiplayer.Core
         public static void ClearRoom()
         {
 #if UNITY_EDITOR
-            if (!MppmUtility.IsAvailable)
+            // Virtual MPPM clones must never wipe the main editor's published room name.
+            if (MppmUtility.IsVirtualInstance)
                 return;
 
             try

@@ -1,4 +1,3 @@
-using Fusion;
 using FusionMultiplayer.Core;
 using FusionMultiplayer.Player;
 using TMPro;
@@ -33,7 +32,7 @@ namespace FusionMultiplayer.UI
                 _eventText = existing.Find("Event")?.GetComponent<TMP_Text>();
                 _kdText = existing.Find("KD")?.GetComponent<TMP_Text>();
                 _botText = existing.Find("Bot")?.GetComponent<TMP_Text>();
-                if (_metaText != null && _eventText != null && _kdText != null)
+                if (_metaText != null && _eventText != null && _kdText != null && _botText != null)
                     return;
             }
 
@@ -43,41 +42,35 @@ namespace FusionMultiplayer.UI
             _root = new GameObject("MatchInfoHud", typeof(RectTransform));
             _root.transform.SetParent(transform, false);
             var rootRt = _root.GetComponent<RectTransform>();
-            rootRt.anchorMin = new Vector2(0.5f, 1f);
-            rootRt.anchorMax = new Vector2(0.5f, 1f);
-            rootRt.pivot = new Vector2(0.5f, 1f);
-            rootRt.anchoredPosition = new Vector2(0f, -52f);
-            rootRt.sizeDelta = new Vector2(720f, 72f);
+            UiRegionLayout.StretchBand(rootRt, UiRegionLayout.MatchInfoBandYMin, UiRegionLayout.MatchInfoBandYMax, 80f);
 
-            _metaText = CreateLine(_root.transform, "Meta", 0f, UiTheme.TextSubtitle);
-            _eventText = CreateLine(_root.transform, "Event", -22f, UiTheme.TitleAccent);
-            _kdText = CreateLine(_root.transform, "KD", -44f, UiTheme.TextPrimary);
-            _botText = CreateLine(_root.transform, "Bot", -44f, new Color(1f, 0.55f, 0.2f, 1f));
+            _metaText = CreateLine(_root.transform, "Meta", 0.72f, UiTheme.TextSubtitle);
+            _eventText = CreateLine(_root.transform, "Event", 0.42f, UiTheme.TitleAccent);
+            _kdText = CreateLine(_root.transform, "KD", 0.12f, UiTheme.TextPrimary);
+            _botText = CreateLine(_root.transform, "Bot", 0.12f, UiTheme.BotBadge);
             var botRt = _botText.rectTransform;
-            botRt.anchorMin = new Vector2(0.5f, 1f);
-            botRt.anchorMax = new Vector2(0.5f, 1f);
-            botRt.pivot = new Vector2(0f, 1f);
-            botRt.anchoredPosition = new Vector2(70f, -44f);
-            botRt.sizeDelta = new Vector2(80f, 22f);
+            botRt.anchorMin = new Vector2(0.58f, 0.05f);
+            botRt.anchorMax = new Vector2(0.72f, 0.35f);
+            botRt.offsetMin = Vector2.zero;
+            botRt.offsetMax = Vector2.zero;
             _botText.alignment = TextAlignmentOptions.Left;
             _botText.text = UiCopy.MatchInfoBotBadge;
             _botText.gameObject.SetActive(false);
         }
 
-        private static TMP_Text CreateLine(Transform parent, string name, float y, Color color)
+        private static TMP_Text CreateLine(Transform parent, string name, float yAnchor, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
             go.transform.SetParent(parent, false);
             var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.5f, 1f);
-            rt.anchorMax = new Vector2(0.5f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, y);
-            rt.sizeDelta = new Vector2(700f, 22f);
+            rt.anchorMin = new Vector2(0.05f, yAnchor);
+            rt.anchorMax = new Vector2(0.95f, yAnchor + 0.28f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
 
             var text = go.GetComponent<TMP_Text>();
             text.alignment = TextAlignmentOptions.Center;
-            text.fontSize = 18f;
+            text.fontSize = UiTypography.ChatMetaCompact;
             text.color = color;
             text.raycastTarget = false;
             text.textWrappingMode = TextWrappingModes.NoWrap;
@@ -118,7 +111,9 @@ namespace FusionMultiplayer.UI
             _metaText.text = string.Format(UiCopy.MatchInfoMetaFormat, mode, map, difficulty);
             _eventText.text = FormatMatchEvent(gm.MatchEventId);
 
-            if (TryGetLocalPlayerData(runner, out var pd))
+            PlayerData pd = null;
+            var showKd = SessionRuntime.AllowsShoot && LocalPlayerHudCache.TryGetLocalPlayerData(out pd);
+            if (showKd && pd != null)
             {
                 _kdText.gameObject.SetActive(true);
                 _kdText.text = string.Format(UiCopy.MatchInfoKdFormat, pd.Score, pd.Deaths);
@@ -140,25 +135,5 @@ namespace FusionMultiplayer.UI
             2 => UiCopy.MatchEventLowGravity,
             _ => UiCopy.MatchEventUnknown
         };
-
-        private static bool TryGetLocalPlayerData(NetworkRunner runner, out PlayerData data)
-        {
-            data = null;
-            if (runner == null || !runner.IsRunning)
-                return false;
-
-            var local = runner.LocalPlayer;
-            foreach (var pd in Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
-            {
-                if (pd.Object == null || !pd.Object.IsValid)
-                    continue;
-                if (pd.Object.InputAuthority != local)
-                    continue;
-                data = pd;
-                return true;
-            }
-
-            return false;
-        }
     }
 }

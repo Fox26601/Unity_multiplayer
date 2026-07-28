@@ -24,18 +24,18 @@
 | # | Requirement | Implementation |
 |---|-------------|----------------|
 | 1 | Open / join room, ≥3 players, configurable capacity | `ConnectionManager.StartSessionAsync`, `SessionData.MaxPlayers` (2–10), create UI dropdown |
-| 2 | ≥3 RPCs with different variable types | e.g. `RPC_RequestCharacter(int, PlayerRef)`, `RPC_CharacterApproved(..., Vector3, Quaternion)`, `RPC_Broadcast(NetworkString)`, `RpcRegisterHit(float, PlayerRef, Vector3)` |
-| 3 | JSON Serialize + Deserialize (≥3 fields) via RPC | `MatchConfigDto` → `JsonUtility` → `GameManager.RPC_SubmitMatchConfigJson(NetworkString<_512>)` → deserialize + ack |
-| 4 | NetworkTransform | On `PlayerAvatar`, `Projectile`, blocks |
+| 2 | ≥3 RPCs with different variable types | `RPC_RequestCharacter(int)`, `RPC_CharacterApproved(..., Vector3, Quaternion)`, `RPC_Broadcast(NetworkString)`, server hit via `ApplyServerHit(float, PlayerRef, Vector3)` |
+| 3 | JSON Serialize + Deserialize (≥3 fields) via RPC | `MatchConfigDto` → `JsonUtility` → `GameManager.RPC_SubmitMatchConfigJson` → deserialize + ack |
+| 4 | NetworkTransform | On `PlayerAvatar`, `PlacedBlock`, `PhysicsProp`. Projectiles use server-authoritative networked pose (no `NetworkTransform`) |
 | 5 | New Input System | `GameplayInput` / `GameplayNetworkInput` + `OnInput` |
-| 6 | Client can become master (N/A for dedicated) | Waived by assignment for Dedicated Server |
+| 6 | Client can become master (N/A for dedicated) | Waived for Dedicated Server / Host |
 | 7 | Scene changes via master/Photon | `ConnectionManager.ServerStartMatch` / `Runner.LoadScene` on server |
-| 8 | UI split host vs client | Lobby start authority messaging; create-room settings only on create page |
-| 9 | Character select, unique slots, server owns occupancy | `GameManager.CharacterOwners`, server spawns avatar |
-| 10 | ≥3 server-only random decisions | (1) spawn jitter `GetRandomizedSpawn`, (2) `MatchEventId`, (3) crit `RollDamage` + vote tie-break |
+| 8 | UI split host vs client | Different lobby status strings; create-room settings on create page; clients may request START |
+| 9 | Character select, unique slots, server owns occupancy | `GameManager.CharacterOwners` (`RpcInfo.Source`), server spawns avatar |
+| 10 | ≥3 server-only random decisions | Spawn jitter, `MatchEventId`, crit `RollDamage` + vote tie-break |
 | 11 | End condition → results UI with scores | `MatchTimer` → `MasterSetGameOver` → `GameOverUI` |
 | 12 | Synced score system | `PlayerData.Score` / `Deaths` `[Networked]` |
-| 13 | Close room, return to menu, valid loop | `SessionLock`, `ShutdownToMainMenuAsync`, map vote restart |
+| 13 | Close room, return to menu, valid loop | `SessionLock` (`phase=Started`, room stays open for reconnect); `ShutdownToMainMenuAsync`; map vote restart |
 | 14 | NetworkRunner.Spawn / Despawn | Avatars, projectiles, blocks, physics props |
 
 ## Bonus — how implemented
@@ -44,20 +44,20 @@
 |-------|--------|--------|----------------|
 | Room settings for creator | 6 | Done | Mode / map / difficulty / max players / hidden |
 | NetworkMecanimAnimator | 8 | **Deferred** | Not claimed this submission |
-| NetworkRigidbody3D | 5 | Done | `Networking.NetworkRigidbody3D` + `PhysicsProp` |
+| NetworkRigidbody3D | 5 | Done | Custom `Networking.NetworkRigidbody3D` on `PhysicsProp` |
 | ≥5 `[Networked]` vars | 7 | Done | Health, Score, slots, timers, votes, tokens, etc. |
 | Session list + player counts | 5 | Done | `SessionBrowserUI` |
 | Join error handling | 3 | Done | `FormatStartGameError`, refuse full/started |
 | Local + remote disconnect | 3 | Done | `LocalDisconnectNotice` → `SessionFlowUI` |
 | Crash reconnect + full control | 15 | Done | `ConnectionToken` + `SessionReconnectTokens` + `AssignInputAuthority` |
 | Master announces start | 3 | Done | Lobby START → server `LoadScene` |
-| Join validation vs master/server | 5 | Done | Token validation + JSON config RPC |
+| Join validation vs master/server | 5 | Done | Token / phase gate in `OnConnectRequest` + MatchConfig JSON RPC |
 | Bot replaces disconnected player | 15 | Done | `BotTakeover` + `BotBrain` |
 | Random join by ≥3 settings | 5 | Done | `QuickJoinAsync` |
-| Dynamic matchmaking | 5 | Done | Periodic lobby refresh |
-| Database read/write | 8 | Done | `MatchStatsDatabase` write + `CareerStatsHud` read |
+| Dynamic matchmaking | 5 | Done | Periodic lobby session-list refresh |
+| Database read/write | 8 | Done | Local JSON `MatchStatsDatabase` + `CareerStatsHud` |
 | Dedicated Server | 55 | Done | `-dedicated` / `-room=Name` |
-| Surprise | 10 | Done | Match event, physics props, map vote, Tab scoreboard, whisper |
+| Surprise | 10 | Done | Physics props, map vote, Tab scoreboard, whisper |
 
 ## Dedicated server runbook
 
@@ -78,5 +78,7 @@ Editor shortcut: Host create (no `-dedicated`) still uses Client-Server authorit
 
 ## Related docs
 
-- Testing: [`TESTING.md`](TESTING.md)
 - Setup: [`SETUP.md`](SETUP.md)
+- Testing: [`TESTING.md`](TESTING.md)
+- Release: [`RELEASE.md`](RELEASE.md)
+- Fusion import: [`FUSION_IMPORT_CHECKLIST.md`](FUSION_IMPORT_CHECKLIST.md)

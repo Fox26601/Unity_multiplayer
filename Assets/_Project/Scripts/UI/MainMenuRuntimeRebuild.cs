@@ -11,7 +11,7 @@ namespace FusionMultiplayer.UI
     /// </summary>
     public static class MainMenuRuntimeRebuild
     {
-        private const int MenuBuildVersion = 22;
+        private const int MenuBuildVersion = 23;
         private const int MenuCompactText = 26;
         private const float FormLabelWidth = 168f;
         private const float LabelShareOfBlock = 0.32f;
@@ -88,7 +88,8 @@ namespace FusionMultiplayer.UI
 
         private static bool NeedsRebuild(Transform panel)
         {
-            var version = panel.Find("MenuUiVersion")?.GetComponent<UiBuildVersionMarker>();
+            var version = panel.Find("UiBuildVersion")?.GetComponent<UiBuildVersionMarker>()
+                          ?? panel.Find("MenuUiVersion")?.GetComponent<UiBuildVersionMarker>();
             if (version == null || version.Version != MenuBuildVersion)
                 return true;
 
@@ -242,11 +243,14 @@ namespace FusionMultiplayer.UI
             joinPage.gameObject.SetActive(false);
             landingPage.gameObject.SetActive(true);
 
-            var versionGo = new GameObject("MenuUiVersion");
+            var versionGo = new GameObject("UiBuildVersion");
             versionGo.transform.SetParent(panel, false);
             versionGo.hideFlags = HideFlags.HideInHierarchy;
             var marker = versionGo.AddComponent<UiBuildVersionMarker>();
             marker.Version = MenuBuildVersion;
+            var legacy = panel.Find("MenuUiVersion");
+            if (legacy != null)
+                Object.Destroy(legacy.gameObject);
 
             Canvas.ForceUpdateCanvases();
             LayoutRebuilder.ForceRebuildLayoutImmediate(panel as RectTransform);
@@ -258,16 +262,6 @@ namespace FusionMultiplayer.UI
             go.transform.SetParent(panel, false);
             UiRegionLayout.StretchBand(go.GetComponent<RectTransform>(), 0.08f, 0.86f, 32f);
             return go.GetComponent<RectTransform>();
-        }
-
-        private static RectTransform CreateColumn(Transform parent, string name, float xMin, float xMax, float yMin,
-            float yMax)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            UiRegionLayout.StretchRegion(rt, xMin, yMin, xMax, yMax, 8f, 4f, 8f, 4f);
-            return rt;
         }
 
         private static void CreateBandLabel(Transform parent, string name, string text, int fontSize, Color color,
@@ -308,25 +302,6 @@ namespace FusionMultiplayer.UI
             label.color = UiTheme.TextPrimary;
             label.alignment = TextAlignmentOptions.MidlineLeft;
             label.textWrappingMode = TextWrappingModes.NoWrap;
-            label.overflowMode = TextOverflowModes.Ellipsis;
-            return label;
-        }
-
-        private static TMP_Text CreateWrappedHint(Transform column, string name, string text, float yMin, float yMax)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(RectMask2D),
-                typeof(TextMeshProUGUI));
-            go.transform.SetParent(column, false);
-            UiRegionLayout.StretchBand(go.GetComponent<RectTransform>(), yMin, yMax, 4f);
-
-            var label = go.GetComponent<TMP_Text>();
-            if (_tmpFont != null) label.font = _tmpFont;
-            label.text = text;
-            label.fontSize = MenuCompactText;
-            label.fontStyle = FontStyles.Italic;
-            label.color = UiTheme.TextSubtitle;
-            label.alignment = TextAlignmentOptions.TopLeft;
-            label.textWrappingMode = TextWrappingModes.Normal;
             label.overflowMode = TextOverflowModes.Ellipsis;
             return label;
         }

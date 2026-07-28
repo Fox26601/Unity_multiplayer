@@ -34,13 +34,17 @@ namespace FusionMultiplayer.Core
             try
             {
                 var file = Load();
-                foreach (var pd in UnityEngine.Object.FindObjectsByType<PlayerData>(FindObjectsSortMode.None))
+                foreach (var pd in PlayerRegistry.AllPlayerData)
                 {
-                    if (pd.Object == null || !pd.Object.IsValid)
+                    if (pd == null || pd.Object == null || !pd.Object.IsValid)
                         continue;
 
-                    var nick = pd.Nick.ToString();
-                    if (string.IsNullOrWhiteSpace(nick))
+                    // Career DB is for human players only — bot takeover seats are mid-match placeholders.
+                    if (pd.IsBotControlled)
+                        continue;
+
+                    var nick = pd.Nick.ToString().Trim();
+                    if (string.IsNullOrWhiteSpace(nick) || nick.StartsWith("BOT ", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     var row = file.Players.Find(p =>
@@ -69,6 +73,10 @@ namespace FusionMultiplayer.Core
         public static IReadOnlyList<PlayerStatsRow> ReadLeaderboard()
         {
             var file = Load();
+            file.Players.RemoveAll(p =>
+                p == null ||
+                string.IsNullOrWhiteSpace(p.Nickname) ||
+                p.Nickname.TrimStart().StartsWith("BOT ", StringComparison.OrdinalIgnoreCase));
             file.Players.Sort((a, b) => b.Kills.CompareTo(a.Kills));
             return file.Players;
         }

@@ -108,18 +108,7 @@ namespace FusionMultiplayer.UI
                 return false;
 
             SessionRuntime.Refresh();
-            return SessionRuntime.AllowsShoot && HasLocalAvatar();
-        }
-
-        private static bool HasLocalAvatar()
-        {
-            foreach (var avatar in Object.FindObjectsByType<PlayerAvatar>(FindObjectsSortMode.None))
-            {
-                if (avatar.Object != null && avatar.Object.IsValid && avatar.HasInputAuthority)
-                    return true;
-            }
-
-            return false;
+            return SessionRuntime.AllowsShoot && LocalPlayerHudCache.TryGetLocalAvatar(out _);
         }
     }
 }

@@ -2,7 +2,11 @@ using Fusion;
 
 namespace FusionMultiplayer.Core
 {
-    /// <summary>Closes the Photon session when the match starts (server / host only).</summary>
+    /// <summary>
+    /// Marks the session as started when the match begins.
+    /// Keeps <see cref="SessionInfo.IsOpen"/> true so crash-reconnect can still reach
+    /// <see cref="ConnectionManager.OnConnectRequest"/>; new players are refused there via phase + token.
+    /// </summary>
     public static class SessionLock
     {
         public static bool TryLockForGameStart(NetworkRunner runner)
@@ -21,7 +25,8 @@ namespace FusionMultiplayer.Core
             {
                 { SessionCatalog.PropPhase, (int)SessionCatalog.SessionPhase.Started }
             });
-            info.IsOpen = false;
+            // Must stay open: Photon GameClosed (32764) rejects reconnects before host OnConnectRequest.
+            info.IsOpen = true;
             return true;
         }
     }
