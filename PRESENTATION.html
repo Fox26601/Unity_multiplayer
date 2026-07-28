@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Fusion Multiplayer — защита проекта</title>
+  <title>Fusion Multiplayer — Project Defense</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
@@ -243,7 +243,11 @@
     }
 
     strong { color: var(--ink); font-weight: 600; }
-    em { font-family: "Instrument Serif", Georgia, serif; font-style: italic; color: var(--accent); }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      color: var(--ink);
+    }
   </style>
 </head>
 <body>
@@ -252,28 +256,28 @@
     <section class="slide active">
       <p class="kicker">Photon Fusion 2 · Unity 6</p>
       <h1>Fusion Multiplayer</h1>
-      <p class="lead">Клиент–серверный мультиплеер: лобби, арена, слоты персонажей, бой, reconnect и dedicated server.</p>
+      <p class="lead">Client–Server multiplayer: lobby, arena, character slots, combat, reconnect, and dedicated server.</p>
       <div class="meta">
         <span class="pill">Daniil Gorlov</span>
         <span class="pill">Solo</span>
-        <span class="pill">ветка feature/final-project</span>
+        <span class="pill">branch feature/final-project</span>
       </div>
     </section>
 
     <section class="slide">
-      <p class="kicker">Стек</p>
-      <h2>Что внутри</h2>
+      <p class="kicker">Stack</p>
+      <h2>What’s inside</h2>
       <div class="grid">
         <div class="card"><h3>Engine</h3><p>Unity 6000.3 · New Input System · UGUI / TMP</p></div>
         <div class="card"><h3>Network</h3><p>Photon Fusion 2 · Host / Client / Dedicated Server</p></div>
-        <div class="card"><h3>Authority</h3><p>StateAuthority на сервере · InputAuthority у игрока</p></div>
-        <div class="card"><h3>Не Shared Mode</h3><p>Мастер-миграция не используется (waived для dedicated)</p></div>
+        <div class="card"><h3>Authority</h3><p>StateAuthority on server · InputAuthority on player</p></div>
+        <div class="card"><h3>Not Shared Mode</h3><p>Host migration unused (waived for dedicated topology)</p></div>
       </div>
     </section>
 
     <section class="slide">
-      <p class="kicker">Сцены</p>
-      <h2>Поток сессии</h2>
+      <p class="kicker">Scenes</p>
+      <h2>Session flow</h2>
       <div class="flow">
         <span>00_Boot</span><i>→</i>
         <span>Main Menu</span><i>→</i>
@@ -282,60 +286,60 @@
         <span>Vote / Leave</span>
       </div>
       <ul class="list" style="margin-top:1.4rem">
-        <li>Create / Join / Quick Join / Reconnect с Main Menu</li>
-        <li>START грузит карту через <strong>Runner.LoadScene</strong> на сервере</li>
-        <li>Leave → shutdown runner → возврат в Main Menu</li>
+        <li>Create / Join / Quick Join / Reconnect from Main Menu</li>
+        <li>START loads the map via <strong>Runner.LoadScene</strong> on the server</li>
+        <li>Leave → shutdown runner → return to Main Menu</li>
       </ul>
     </section>
 
     <section class="slide">
       <p class="kicker">Mandatory · 40</p>
-      <h2>Ключевые требования</h2>
+      <h2>Core requirements</h2>
       <div class="two">
         <ul class="list">
-          <li>Комнаты ≥3 игроков, capacity 2–10</li>
-          <li>≥3 RPC разных типов + JSON MatchConfig</li>
-          <li>NetworkTransform на avatar / block / prop</li>
-          <li>Слоты персонажей — сервер владеет occupancy</li>
-          <li>Счёт / таймер / game over UI</li>
-          <li>Spawn / Despawn через NetworkRunner</li>
+          <li>Rooms for ≥3 players, capacity 2–10</li>
+          <li>≥3 RPC types + JSON MatchConfig</li>
+          <li>NetworkTransform on avatar / block / prop</li>
+          <li>Character slots — server owns occupancy</li>
+          <li>Scores / timer / game-over UI</li>
+          <li>Spawn / Despawn via NetworkRunner</li>
         </ul>
-        <div class="note">Projectile без NetworkTransform: серверная networked pose, без double sync.</div>
+        <div class="note">Projectile has no NetworkTransform: server networked pose, avoids double sync.</div>
       </div>
     </section>
 
     <section class="slide">
       <p class="kicker">Networking</p>
-      <h2>Авторитет сервера</h2>
+      <h2>Server authority</h2>
       <div class="grid">
-        <div class="card"><h3>Слоты</h3><p><code>RPC_RequestCharacter</code> берёт игрока из <strong>RpcInfo.Source</strong>, не из клиента.</p></div>
-        <div class="card"><h3>Урон / счёт</h3><p>Мутации только на StateAuthority: <code>ApplyServerHit</code>, <code>ServerAwardScore</code>.</p></div>
-        <div class="card"><h3>JSON config</h3><p>Deserialize + ack MatchConfigDto; join gate — ConnectionToken / phase.</p></div>
-        <div class="card"><h3>Сцены</h3><p>Смена карты только с сервера после START / vote.</p></div>
+        <div class="card"><h3>Slots</h3><p><code>RPC_RequestCharacter</code> uses <strong>RpcInfo.Source</strong>, not a client-supplied PlayerRef.</p></div>
+        <div class="card"><h3>Damage / score</h3><p>Mutations only on StateAuthority: <code>ApplyServerHit</code>, <code>ServerAwardScore</code>.</p></div>
+        <div class="card"><h3>JSON config</h3><p>Deserialize + ack MatchConfigDto; join gate is ConnectionToken / phase.</p></div>
+        <div class="card"><h3>Scenes</h3><p>Map changes only from the server after START / vote.</p></div>
       </div>
     </section>
 
     <section class="slide">
       <p class="kicker">Gameplay</p>
-      <h2>Матч</h2>
+      <h2>Match loop</h2>
       <div class="grid">
-        <div class="card"><h3>Слоты 0–9</h3><p>Уникальная занятость, spawn точки со jitter.</p></div>
-        <div class="card"><h3>Бой / Sandbox</h3><p>Стрельба, здоровье, Tab scoreboard, блоки E/Q.</p></div>
-        <div class="card"><h3>Чат</h3><p>Global + whisper по нику.</p></div>
-        <div class="card"><h3>Конец</h3><p>Таймер 5:00 → results → map vote → новая карта или Leave.</p></div>
+        <div class="card"><h3>Slots 0–9</h3><p>Unique occupancy, spawn points with jitter.</p></div>
+        <div class="card"><h3>Combat / Sandbox</h3><p>Shooting, health, Tab scoreboard, E/Q blocks.</p></div>
+        <div class="card"><h3>Chat</h3><p>Global + whisper by nickname.</p></div>
+        <div class="card"><h3>End</h3><p>5:00 timer → results → map vote → new map or Leave.</p></div>
       </div>
     </section>
 
     <section class="slide">
       <p class="kicker">Bonus highlights</p>
-      <h2>Что заявлено сверх mandatory</h2>
+      <h2>Claimed beyond mandatory</h2>
       <div class="grid">
-        <div class="card"><h3>+15 Reconnect</h3><p>ConnectionToken → возврат InputAuthority, снятие бота.</p></div>
-        <div class="card"><h3>+15 Bot takeover</h3><p>После disconnect аватар остаётся, AI в FixedUpdateNetwork.</p></div>
+        <div class="card"><h3>+15 Reconnect</h3><p>ConnectionToken → restore InputAuthority, deactivate bot.</p></div>
+        <div class="card"><h3>+15 Bot takeover</h3><p>After disconnect the avatar stays; AI runs in FixedUpdateNetwork.</p></div>
         <div class="card"><h3>+55 Dedicated</h3><p><code>-dedicated -room=Name</code>, GameMode.Server.</p></div>
-        <div class="card"><h3>+8 DB · +5 NRB</h3><p>Локальный JSON career stats · custom NetworkRigidbody3D.</p></div>
+        <div class="card"><h3>+8 DB · +5 NRB</h3><p>Local JSON career stats · custom NetworkRigidbody3D.</p></div>
       </div>
-      <p class="note" style="margin-top:0.8rem">NetworkMecanimAnimator — <strong>не заявляем</strong> (deferred).</p>
+      <p class="note" style="margin-top:0.8rem">NetworkMecanimAnimator is <strong>not claimed</strong> (deferred).</p>
     </section>
 
     <section class="slide">
@@ -343,54 +347,54 @@
       <h2>Crash ≠ Leave</h2>
       <div class="two">
         <ul class="list">
-          <li><strong>Force-quit</strong> сохраняет token → кнопка Reconnect</li>
-          <li>Комната soft-lock: <code>phase=Started</code>, <code>IsOpen=true</code></li>
-          <li>Неизвестный join после START — refuse</li>
-          <li>Известный token — reclaim avatar / slot / score</li>
+          <li><strong>Force-quit</strong> keeps the token → Reconnect button</li>
+          <li>Room soft-lock: <code>phase=Started</code>, <code>IsOpen=true</code></li>
+          <li>Unknown join after START is refused</li>
+          <li>Known token reclaims avatar / slot / score</li>
         </ul>
-        <div class="note">Если закрыть Photon-комнату, reconnect упрётся в GameClosed (32764) до нашего OnConnectRequest.</div>
+        <div class="note">Closing the Photon room would hit GameClosed (32764) before our OnConnectRequest can accept the token.</div>
       </div>
     </section>
 
     <section class="slide">
       <p class="kicker">Dedicated</p>
-      <h2>Серверный процесс</h2>
+      <h2>Server process</h2>
       <ul class="list">
-        <li>Запуск: <code>… -batchmode -nographics -dedicated -room=Ded1</code></li>
-        <li>Клиенты Join → START (RPC) → сервер грузит карту</li>
-        <li>Сервер — единственный StateAuthority</li>
-        <li>Disconnect клиента → bot; Reconnect → контроль обратно</li>
+        <li>Launch: <code>… -batchmode -nographics -dedicated -room=Ded1</code></li>
+        <li>Clients Join → START (RPC) → server loads the map</li>
+        <li>Server is the sole StateAuthority</li>
+        <li>Client disconnect → bot; Reconnect restores control</li>
       </ul>
-      <p class="lead" style="margin-top:1rem">В редакторе для локальных тестов: Host create + Client join.</p>
+      <p class="lead" style="margin-top:1rem">Editor local testing: Host create + Client join.</p>
     </section>
 
     <section class="slide">
-      <p class="kicker">Демо · 5–8 мин</p>
-      <h2>Сценарий показа</h2>
-      <ol class="list" style="counter-reset: n">
-        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">1.</span> Boot → Create room (max ≥3)</li>
-        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">2.</span> Второй клиент Join → Lobby → START</li>
-        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">3.</span> Разные слоты → стрельба / chat / Tab</li>
-        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">4.</span> Force-quit → BOT → Reconnect</li>
-        <li style="padding-left:1.6rem"><span style="position:absolute;left:0;color:var(--accent);font-weight:700">5.</span> End / vote → Leave → Leaderboard</li>
-      </ol>
+      <p class="kicker">Demo · 5–8 min</p>
+      <h2>Live walkthrough</h2>
+      <ul class="list">
+        <li><strong>1.</strong> Boot → Create room (max ≥3)</li>
+        <li><strong>2.</strong> Second client Join → Lobby → START</li>
+        <li><strong>3.</strong> Different slots → shoot / chat / Tab</li>
+        <li><strong>4.</strong> Force-quit → BOT → Reconnect</li>
+        <li><strong>5.</strong> End / vote → Leave → Leaderboard</li>
+      </ul>
     </section>
 
     <section class="slide">
-      <p class="kicker">Вопросы</p>
-      <h2>Короткие ответы</h2>
+      <p class="kicker">Q&amp;A</p>
+      <h2>Short answers</h2>
       <div class="grid">
-        <div class="card"><h3>Почему NT не на Projectile?</h3><p>Свой tick pose на сервере; NT давал конфликт интерполяции.</p></div>
-        <div class="card"><h3>Почему комната не closed?</h3><p>Нужен soft-lock для token reconnect без GameClosed.</p></div>
-        <div class="card"><h3>Join vs Reconnect?</h3><p>После START — только Reconnect с тем же token.</p></div>
-        <div class="card"><h3>Custom NRB?</h3><p>Свой <code>Networking.NetworkRigidbody3D</code>, без Fusion Physics addon.</p></div>
+        <div class="card"><h3>Why no NT on Projectile?</h3><p>Custom server tick pose; NetworkTransform fought interpolation.</p></div>
+        <div class="card"><h3>Why not close the room?</h3><p>Soft-lock keeps reconnect possible without GameClosed.</p></div>
+        <div class="card"><h3>Join vs Reconnect?</h3><p>After START, use Reconnect with the same token.</p></div>
+        <div class="card"><h3>Custom NRB?</h3><p>Our <code>Networking.NetworkRigidbody3D</code>, not the Fusion Physics addon.</p></div>
       </div>
     </section>
 
     <section class="slide">
-      <p class="kicker">Итог</p>
-      <h1>Спасибо</h1>
-      <p class="lead">Готов ответить на вопросы и показать live-сессию.</p>
+      <p class="kicker">Closing</p>
+      <h1>Thank you</h1>
+      <p class="lead">Happy to take questions and run a live session.</p>
       <div class="meta">
         <span class="pill">docs: ASSIGNMENT · SETUP · TESTING · RELEASE</span>
         <span class="pill">repo: Unity_multiplayer</span>
@@ -400,7 +404,7 @@
   </div>
 
   <div class="bar">
-    <div class="hint">Навигация: <kbd>→</kbd> <kbd>←</kbd> · <kbd>Space</kbd> · клик</div>
+    <div class="hint">Navigate: <kbd>→</kbd> <kbd>←</kbd> · <kbd>Space</kbd> · click</div>
     <div id="counter">1 / 12</div>
     <div class="progress" id="progress"></div>
   </div>
