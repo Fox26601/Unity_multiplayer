@@ -20,6 +20,7 @@ namespace FusionMultiplayer.UI
         private int _lastScore = int.MinValue;
         private int _lastDeaths = int.MinValue;
         private bool _lastBot;
+        private bool _rootVisible = true;
 
         private void Awake()
         {
@@ -92,13 +93,15 @@ namespace FusionMultiplayer.UI
             if (_root == null || _metaText == null)
                 return;
 
-            if (!GameSceneReadiness.TryGetGameManager(out var gm) || gm.IsGameOver)
+            var wantVisible = GameSceneReadiness.TryGetGameManager(out var gm) && !gm.IsGameOver;
+            if (wantVisible != _rootVisible)
             {
-                _root.SetActive(false);
-                return;
+                _rootVisible = wantVisible;
+                _root.SetActive(wantVisible);
             }
 
-            _root.SetActive(true);
+            if (!wantVisible)
+                return;
 
             var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
             SessionRuntime.Refresh(runner);

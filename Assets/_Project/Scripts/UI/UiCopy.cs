@@ -30,9 +30,9 @@ namespace FusionMultiplayer.UI
         public const string ReconnectFailed =
             "Reconnect failed. The host may have left, or your session token is no longer valid.";
         public const string QuickJoinNoMatch =
-            "No open rooms match the selected mode / map / difficulty. After Leave, use Create room; Reconnect is only for force-quit.";
+            "No open rooms match the selected mode / map / difficulty. Use Create room, Join by name, or Reconnect if you left a started match.";
         public static string QuickJoinNoMatchDetail(string filters) =>
-            $"No open rooms match {filters}. After Leave use Create room or Join by name. Reconnect is only after force-quit; started matches are not quick-joinable.";
+            $"No open rooms match {filters}. Started matches are not quick-joinable — use Reconnect if you were in one, or Create / Join a lobby.";
         public const string DisconnectNoticePrefix = "Disconnected: ";
         public const string DisconnectedByServer =
             "Disconnected by server (nickname taken or join refused). Change your nickname and try again.";

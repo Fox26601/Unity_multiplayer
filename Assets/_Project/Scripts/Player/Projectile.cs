@@ -6,32 +6,31 @@ using UnityEngine;
 namespace FusionMultiplayer.Player
 {
     /// <summary>
-    /// Combat projectile: SA advances networked position; Render applies it (no NetworkTransform fight).
+    /// Combat projectile: SA advances networked position; Render applies it.
     /// </summary>
     [RequireComponent(typeof(SphereCollider))]
     public sealed class Projectile : NetworkBehaviour
     {
         private const float Speed = 45f;
         private const float LifetimeSeconds = 5f;
+        private const float MaxTravelDistance = 80f;
         private const float MaxHitDistance = 40f;
         private const float Damage = 25f;
 
         private static readonly RaycastHit[] SweepHits = new RaycastHit[16];
+        private static readonly Collider[] OverlapHits = new Collider[16];
 
         [Networked] public PlayerRef Shooter { get; private set; }
         [Networked] private Vector3 NetPosition { get; set; }
+        [Networked] private Vector3 NetVelocity { get; set; }
+        [Networked] private Vector3 NetSpawnOrigin { get; set; }
         [Networked] private TickTimer _lifetime { get; set; }
 
         private SphereCollider _collider;
-        private Vector3 _velocity;
         private bool _resolved;
         private bool _spawned;
         private PlayerRef _shooterRef;
-        private Collider[] _ignoredShooterColliders;
 
-        /// <summary>
-        /// Pre-spawn hook: only caches local shooter. Networked Shooter is applied in Spawned.
-        /// </summary>
         public void ConfigureShooter(PlayerRef shooter)
         {
             _shooterRef = shooter;
@@ -41,6 +40,13 @@ namespace FusionMultiplayer.Player
         {
             _collider = GetComponent<SphereCollider>();
             _collider.isTrigger = true;
+
+            var rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
         }
 
         public override void Spawned()
@@ -56,13 +62,22 @@ namespace FusionMultiplayer.Player
                 Shooter = _shooterRef;
             }
 
+            var forward = transform.forward;
+            if (forward.sqrMagnitude < 0.0001f)
+                forward = Vector3.forward;
+
             NetPosition = transform.position;
-            _velocity = transform.forward * Speed;
+            NetSpawnOrigin = NetPosition;
+            NetVelocity = forward.normalized * Speed;
+
             if (HasStateAuthority)
                 _lifetime = TickTimer.CreateFromSeconds(Runner, LifetimeSeconds);
 
             _spawned = true;
             IgnoreShooterCollisions();
+
+            if (HasStateAuthority)
+                ResolveOverlapsAt(NetPosition);
         }
 
         public override void Despawned(NetworkRunner runner, bool hasState)
@@ -70,7 +85,6 @@ namespace FusionMultiplayer.Player
             _spawned = false;
             _resolved = false;
             _shooterRef = PlayerRef.None;
-            _ignoredShooterColliders = null;
         }
 
         private bool CanUseNetworkedState()
@@ -83,33 +97,45 @@ namespace FusionMultiplayer.Player
             if (!CanUseNetworkedState() || !HasStateAuthority)
                 return;
 
-            if (_lifetime.Expired(Runner))
-            {
-                Runner.Despawn(Object);
-                return;
-            }
-
             if (_resolved)
             {
-                if (Runner != null && Runner.IsRunning && Object.IsValid)
-                    Runner.Despawn(Object);
+                ForceDespawn();
                 return;
             }
 
+            if (ShouldExpire())
+            {
+                ForceDespawn();
+                return;
+            }
+
+            if (ResolveOverlapsAt(NetPosition))
+                return;
+
             var origin = NetPosition;
-            var step = _velocity * Runner.DeltaTime;
+            var step = NetVelocity * Runner.DeltaTime;
             if (TrySweepHit(origin, step, out var sweepCollider))
             {
                 TryResolveCollision(sweepCollider);
                 if (_resolved || !CanUseNetworkedState())
                     return;
+
+                // Solid hit that did not resolve — still end the shot (no floating).
+                if (sweepCollider != null && !sweepCollider.isTrigger)
+                {
+                    ForceDespawn();
+                    return;
+                }
             }
 
-            if (!CanUseNetworkedState())
+            if (!CanUseNetworkedState() || _resolved)
                 return;
 
             NetPosition = origin + step;
             transform.position = NetPosition;
+
+            if ((NetPosition - NetSpawnOrigin).sqrMagnitude >= MaxTravelDistance * MaxTravelDistance)
+                ForceDespawn();
         }
 
         public override void Render()
@@ -128,6 +154,40 @@ namespace FusionMultiplayer.Player
             TryResolveCollision(other);
         }
 
+        private bool ShouldExpire()
+        {
+            if (_lifetime.ExpiredOrNotRunning(Runner))
+                return true;
+
+            return false;
+        }
+
+        private bool ResolveOverlapsAt(Vector3 origin)
+        {
+            var radius = _collider != null ? _collider.radius * GetMaxAxis(transform.lossyScale) : 0.18f;
+            var count = Physics.OverlapSphereNonAlloc(origin, radius, OverlapHits, Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+
+            for (var i = 0; i < count; i++)
+            {
+                var col = OverlapHits[i];
+                if (col == null || col == _collider || !IsRelevantSweepTarget(col))
+                    continue;
+
+                TryResolveCollision(col);
+                if (_resolved)
+                    return true;
+
+                if (!col.isTrigger)
+                {
+                    ForceDespawn();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private bool TrySweepHit(Vector3 origin, Vector3 step, out Collider hitCollider)
         {
             hitCollider = null;
@@ -136,7 +196,7 @@ namespace FusionMultiplayer.Player
 
             var radius = _collider != null ? _collider.radius * GetMaxAxis(transform.lossyScale) : 0.18f;
             var count = Physics.SphereCastNonAlloc(origin, radius, step.normalized, SweepHits, step.magnitude,
-                Physics.AllLayers, QueryTriggerInteraction.Collide);
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide);
 
             var nearest = float.MaxValue;
             for (var i = 0; i < count; i++)
@@ -155,7 +215,6 @@ namespace FusionMultiplayer.Player
             return hitCollider != null;
         }
 
-        /// <summary>Sweep must skip the shooter's own colliders and other projectiles.</summary>
         private bool IsRelevantSweepTarget(Collider col)
         {
             if (col.GetComponentInParent<Projectile>() != null)
@@ -187,7 +246,7 @@ namespace FusionMultiplayer.Player
             {
                 if (!victim.IsAlive)
                 {
-                    DespawnResolved();
+                    ForceDespawn();
                     return;
                 }
 
@@ -198,20 +257,18 @@ namespace FusionMultiplayer.Player
                     return;
                 }
 
-                // Contacted a player body but cannot award damage — still end the shot.
-                DespawnResolved();
+                ForceDespawn();
                 return;
             }
 
             if (ProjectileHitSurface.TryGetBlockingSurface(other, out _))
             {
-                DespawnResolved();
+                ForceDespawn();
                 return;
             }
 
-            // Solid non-player collider that wasn't tagged — still stop the shot.
             if (!other.isTrigger && other.GetComponentInParent<PlayerAvatar>() == null)
-                DespawnResolved();
+                ForceDespawn();
         }
 
         private void RegisterHit(PlayerAvatar victim, PlayerRef victimRef)
@@ -220,23 +277,18 @@ namespace FusionMultiplayer.Player
                 return;
 
             if (ValidateHit(victim, victimRef))
-            {
-                var hitOrigin = NetPosition;
-                victim.ApplyServerHit(Damage, _shooterRef, hitOrigin);
-            }
+                victim.ApplyServerHit(Damage, _shooterRef, NetPosition);
 
-            // Always despawn on intended target contact, even if damage validation fails.
-            DespawnResolved();
+            ForceDespawn();
         }
 
-        private void DespawnResolved()
+        private void ForceDespawn()
         {
-            if (_resolved)
+            _resolved = true;
+            if (Runner == null || !Runner.IsRunning || Object == null || !Object.IsValid)
                 return;
 
-            _resolved = true;
-            if (Runner != null && Runner.IsRunning && Object != null && Object.IsValid)
-                Runner.Despawn(Object);
+            Runner.Despawn(Object);
         }
 
         private bool ValidateHit(PlayerAvatar victim, PlayerRef victimRef)
@@ -244,9 +296,7 @@ namespace FusionMultiplayer.Player
             if (_shooterRef == PlayerRef.None || victimRef == PlayerRef.None || _shooterRef == victimRef)
                 return false;
 
-            var hitPos = NetPosition;
-            var victimPos = victim.transform.position;
-            var planar = hitPos - victimPos;
+            var planar = NetPosition - victim.transform.position;
             planar.y = 0f;
             return planar.sqrMagnitude <= MaxHitDistance * MaxHitDistance;
         }
@@ -259,7 +309,6 @@ namespace FusionMultiplayer.Player
             var avatar = PlayerRegistry.FindAvatar(_shooterRef);
             if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
             {
-                // Slot / bot seats: InputAuthority may be None — fall back to scan once.
                 var buffer = PlayerRegistry.CopyAllAvatars();
                 for (var i = 0; i < buffer.Count; i++)
                 {
@@ -277,10 +326,10 @@ namespace FusionMultiplayer.Player
             if (avatar == null)
                 return;
 
-            _ignoredShooterColliders = avatar.GetComponentsInChildren<Collider>(true);
-            for (var i = 0; i < _ignoredShooterColliders.Length; i++)
+            var cols = avatar.GetComponentsInChildren<Collider>(true);
+            for (var i = 0; i < cols.Length; i++)
             {
-                var col = _ignoredShooterColliders[i];
+                var col = cols[i];
                 if (col != null && col != _collider)
                     Physics.IgnoreCollision(_collider, col, true);
             }

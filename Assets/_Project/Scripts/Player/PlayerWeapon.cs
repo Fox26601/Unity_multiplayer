@@ -8,6 +8,8 @@ namespace FusionMultiplayer.Player
     public sealed class PlayerWeapon : NetworkBehaviour
     {
         private const float FireCooldownSeconds = 0.25f;
+        private const float MinPitch = -89f;
+        private const float MaxPitch = 89f;
 
         [SerializeField] private NetworkObject _projectilePrefab;
         [SerializeField] private float _muzzleForwardOffset = 0.65f;
@@ -15,6 +17,10 @@ namespace FusionMultiplayer.Player
         private Transform _cameraTransform;
         private NetworkButtons _previousButtons;
         [Networked] private TickTimer _fireCooldown { get; set; }
+
+        /// <summary>Same composition as PlayerCamera: body yaw * local pitch.</summary>
+        public static Quaternion AimRotation(float yaw, float pitch) =>
+            Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(pitch, 0f, 0f);
 
         private void Awake()
         {
@@ -46,16 +52,28 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            if (input.Buttons.WasPressed(_previousButtons, GameplayButton.Fire) && _fireCooldown.ExpiredOrNotRunning(Runner))
-                RpcFire();
+            if (input.Buttons.WasPressed(_previousButtons, GameplayButton.Fire) &&
+                _fireCooldown.ExpiredOrNotRunning(Runner))
+            {
+                var yaw = input.LookYaw;
+                var pitch = input.LookPitch;
+                if (PlayerLook.TryGetLocalLook(out var liveYaw, out var livePitch))
+                {
+                    yaw = liveYaw;
+                    pitch = livePitch;
+                }
+
+                RpcFire(yaw, pitch);
+            }
 
             _previousButtons = input.Buttons;
         }
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
-        private void RpcFire()
+        private void RpcFire(float yaw, float pitch)
         {
-            ServerFire();
+            pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
+            ServerFire(yaw, pitch);
         }
 
         /// <summary>Server / bot fire path (StateAuthority only).</summary>
@@ -64,10 +82,19 @@ namespace FusionMultiplayer.Player
             if (!HasStateAuthority)
                 return;
 
-            ServerFire();
+            var look = GetComponent<PlayerLook>();
+            var yaw = transform.eulerAngles.y;
+            var pitch = 0f;
+            if (look != null)
+            {
+                yaw = look.Yaw;
+                pitch = look.Pitch;
+            }
+
+            ServerFire(yaw, pitch);
         }
 
-        private void ServerFire()
+        private void ServerFire(float yaw, float pitch)
         {
             if (!SessionRuntime.AllowsShoot || _projectilePrefab == null || Runner == null || !Runner.IsRunning)
                 return;
@@ -79,7 +106,8 @@ namespace FusionMultiplayer.Player
             if (!_fireCooldown.ExpiredOrNotRunning(Runner))
                 return;
 
-            if (!TryGetMuzzlePose(out var position, out var rotation))
+            pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
+            if (!TryGetMuzzlePose(yaw, pitch, out var position, out var rotation))
                 return;
 
             var shooter = Object.InputAuthority;
@@ -103,23 +131,16 @@ namespace FusionMultiplayer.Player
             GetComponent<PlayerAnimationSync>()?.PulseShoot();
         }
 
-        private bool TryGetMuzzlePose(out Vector3 position, out Quaternion rotation)
+        private bool TryGetMuzzlePose(float yaw, float pitch, out Vector3 position, out Quaternion rotation)
         {
-            position = default;
-            rotation = transform.rotation;
+            rotation = AimRotation(yaw, pitch);
+            var eye = transform.position + Vector3.up * 1.6f;
+            if (_cameraTransform == null)
+                _cameraTransform = transform.Find("PlayerCamera");
+            if (_cameraTransform != null)
+                eye = transform.position + Vector3.up * _cameraTransform.localPosition.y;
 
-            var camTr = _cameraTransform;
-            if (camTr == null)
-                camTr = transform.Find("PlayerCamera");
-
-            if (camTr != null)
-            {
-                rotation = camTr.rotation;
-                position = camTr.position + camTr.forward * _muzzleForwardOffset;
-                return true;
-            }
-
-            position = transform.position + Vector3.up * 1.6f + transform.forward * _muzzleForwardOffset;
+            position = eye + rotation * Vector3.forward * _muzzleForwardOffset;
             return true;
         }
     }

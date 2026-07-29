@@ -426,35 +426,6 @@ namespace FusionMultiplayer.Core
                 CharacterOwners.Set(index, PlayerRef.None);
         }
 
-        /// <summary>Free character slot and despawn avatar for a player who left via menu.</summary>
-        public void ServerReleaseIntentionalLeaver(PlayerRef player, int characterSlot)
-        {
-            if (!HasStateAuthority || Runner == null)
-                return;
-
-            if (player != PlayerRef.None)
-                ClearSlotsForPlayer(player);
-            if (characterSlot >= 0)
-                ReleaseCharacterSlot(characterSlot, player);
-
-            foreach (var avatar in PlayerRegistry.EnumerateAllAvatars())
-            {
-                if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
-                    continue;
-
-                var matchPlayer = player != PlayerRef.None && avatar.Object.InputAuthority == player;
-                var matchSlot = characterSlot >= 0 && avatar.CharacterSlot == characterSlot;
-                if (!matchPlayer && !matchSlot)
-                    continue;
-
-                var brain = avatar.GetComponent<BotBrain>();
-                if (brain != null)
-                    brain.Deactivate();
-
-                Runner.Despawn(avatar.Object);
-            }
-        }
-
         public void MasterSetGameOver()
         {
             if (!CanMutateSlots || !HasStateAuthority)

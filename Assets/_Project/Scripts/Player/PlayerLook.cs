@@ -34,6 +34,9 @@ namespace FusionMultiplayer.Player
             return true;
         }
 
+        public float Yaw => _yaw;
+        public float Pitch => _pitch;
+
         private void Awake()
         {
             _cameraPivot = transform.Find("PlayerCamera");
@@ -50,6 +53,7 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
+            enabled = true;
             if (_avatar == null)
                 _avatar = GetComponent<PlayerAvatar>();
 
@@ -62,6 +66,8 @@ namespace FusionMultiplayer.Player
                 _localInputAuthority = this;
                 GameplayInputMode.Changed += OnInputModeChanged;
             }
+
+            ApplyCameraPitchOnly();
         }
 
         public override void Despawned(NetworkRunner runner, bool hasState)
@@ -92,7 +98,8 @@ namespace FusionMultiplayer.Player
 
             var pitch = -Mathf.Atan2(to.y, flat.magnitude) * Mathf.Rad2Deg;
             _pitch = Mathf.Clamp(pitch, _minPitch, _maxPitch);
-            ApplyLookRotation();
+            transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+            ApplyCameraPitchOnly();
         }
 
         public bool IsBotDriven
@@ -107,26 +114,26 @@ namespace FusionMultiplayer.Player
 
         public override void FixedUpdateNetwork()
         {
-            if (!HasStateAuthority)
-                return;
-
             if (_avatar != null && !_avatar.IsAlive)
                 return;
 
             if (IsBotDriven)
             {
-                transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+                if (HasStateAuthority)
+                    transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
                 return;
             }
 
-            // Host IA+SA: keep live Render _yaw — do not snap from tick-sampled LookYaw (~32 Hz stutter).
+            // Local IA (host or client prediction): body yaw from live look.
             if (HasInputAuthority)
             {
                 transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
                 return;
             }
 
-            // SA simulating a remote player: apply absolute look from their input.
+            if (!HasStateAuthority)
+                return;
+
             if (!GetInput(out GameplayNetworkInput input))
                 return;
 
@@ -140,7 +147,7 @@ namespace FusionMultiplayer.Player
             if (IsBotDriven)
             {
                 if (HasStateAuthority)
-                    ApplyLookRotation();
+                    ApplyCameraPitchOnly();
                 return;
             }
 
@@ -152,25 +159,13 @@ namespace FusionMultiplayer.Player
                         ApplyLookDelta(delta.x, delta.y);
                 }
 
-                // Pure clients: pitch on camera only; yaw for Sample/view without fighting NT body pose.
-                if (!HasStateAuthority)
-                {
-                    if (_cameraPivot != null)
-                    {
-                        var yawRot = Quaternion.Euler(0f, _yaw, 0f);
-                        var pitchRot = Quaternion.Euler(_pitch, 0f, 0f);
-                        _cameraPivot.rotation = yawRot * pitchRot;
-                    }
-
-                    return;
-                }
-
-                ApplyLookRotation();
+                transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+                ApplyCameraPitchOnly();
                 return;
             }
 
             if (HasStateAuthority)
-                ApplyLookRotation();
+                ApplyCameraPitchOnly();
         }
 
         private void ApplyLookDelta(float deltaX, float deltaY)
@@ -180,9 +175,8 @@ namespace FusionMultiplayer.Player
             _pitch = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
         }
 
-        private void ApplyLookRotation()
+        private void ApplyCameraPitchOnly()
         {
-            transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (_cameraPivot != null)
                 _cameraPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Fusion;
 using FusionMultiplayer.Core;
 using FusionMultiplayer.Player;
 using TMPro;
@@ -44,6 +46,11 @@ namespace FusionMultiplayer.UI
         private InputField _nicknameLegacy;
         private InputField _roomLegacy;
         private bool _wired;
+        private MainMenuPage _currentPage = MainMenuPage.Landing;
+        private int _reconnectProbeId;
+        private float _lastReconnectListRefresh = -10f;
+        private bool _reconnectProbeRunning;
+        private bool _reconnectProbeQueued;
 
         private void OnEnable()
         {
@@ -51,6 +58,14 @@ namespace FusionMultiplayer.UI
             MainMenuRuntimeRebuild.EnsureBuilt(transform);
             GameplayInputMode.ChatBlockingGameplay = false;
             GameplayInputMode.SetMenu();
+            SubscribeReconnectProbe();
+        }
+
+        private void OnDisable()
+        {
+            UnsubscribeReconnectProbe();
+            _reconnectProbeQueued = false;
+            _reconnectProbeId++;
         }
 
         private void Awake()
@@ -231,11 +246,110 @@ namespace FusionMultiplayer.UI
             RefreshReconnectButton();
         }
 
+        private void SubscribeReconnectProbe()
+        {
+            ConnectionManager.SessionListUpdated -= OnSessionListUpdatedForReconnect;
+            ConnectionManager.SessionListUpdated += OnSessionListUpdatedForReconnect;
+        }
+
+        private void UnsubscribeReconnectProbe()
+        {
+            ConnectionManager.SessionListUpdated -= OnSessionListUpdatedForReconnect;
+        }
+
+        private void OnSessionListUpdatedForReconnect(IReadOnlyList<SessionInfo> _)
+        {
+            if (_currentPage != MainMenuPage.Landing || !isActiveAndEnabled)
+                return;
+            if (Time.unscaledTime - _lastReconnectListRefresh < 0.75f)
+                return;
+            _lastReconnectListRefresh = Time.unscaledTime;
+            RefreshReconnectButton();
+        }
+
         private void RefreshReconnectButton()
         {
-            var has = SessionReconnectStore.TryLoad(out _, out _, out _);
-            if (_reconnectButton != null)
-                _reconnectButton.gameObject.SetActive(has);
+            if (_reconnectProbeRunning)
+            {
+                _reconnectProbeQueued = true;
+                return;
+            }
+
+            _ = RefreshReconnectButtonLoopAsync();
+        }
+
+        private async Task RefreshReconnectButtonLoopAsync()
+        {
+            _reconnectProbeRunning = true;
+            try
+            {
+                do
+                {
+                    _reconnectProbeQueued = false;
+                    await RefreshReconnectButtonAsync();
+                } while (_reconnectProbeQueued);
+            }
+            finally
+            {
+                _reconnectProbeRunning = false;
+            }
+        }
+
+        private void SetReconnectButtonVisible(bool visible)
+        {
+            if (_reconnectButton == null)
+                return;
+            _reconnectButton.gameObject.SetActive(visible);
+            if (visible)
+                _reconnectButton.interactable = true;
+        }
+
+        private async Task RefreshReconnectButtonAsync()
+        {
+            var probeId = ++_reconnectProbeId;
+            SetReconnectButtonVisible(false);
+
+            if (SessionData.UseOfflineMode)
+            {
+                SessionReconnectStore.Clear();
+                return;
+            }
+
+            if (!SessionReconnectStore.TryLoad(out var room, out _, out var mode, out var hidden))
+                return;
+
+            if (!TryResolveConnectionManager(out var cm))
+            {
+                if (!hidden)
+                    SessionReconnectStore.Clear();
+                else
+                    SetReconnectButtonVisible(true);
+                return;
+            }
+
+            var found = false;
+            try
+            {
+                found = await cm.ProbeReconnectRoomAsync(room, mode);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[FusionMultiplayer] Reconnect probe failed: {ex.Message}");
+            }
+
+            if (probeId != _reconnectProbeId || !isActiveAndEnabled)
+                return;
+            if (_currentPage != MainMenuPage.Landing)
+                return;
+
+            if (found || hidden)
+            {
+                SetReconnectButtonVisible(true);
+                return;
+            }
+
+            SessionReconnectStore.Clear();
+            SetReconnectButtonVisible(false);
         }
 
         private void OnLeaderboardClicked() => GetComponent<CareerStatsHud>()?.Open();
@@ -273,27 +387,34 @@ namespace FusionMultiplayer.UI
 
         private async Task StartReconnectAsync()
         {
-            if (!SessionReconnectStore.TryLoad(out var room, out var token, out var mode))
+            if (!SessionReconnectStore.TryLoad(out var room, out var token, out var mode, out var hidden))
             {
-                _sessionFlow?.SetStatus(UiCopy.QuickJoinNoMatch, true);
+                RefreshReconnectButton();
+                _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                 return;
             }
 
             SessionData.SetReconnectToken(token);
             SessionData.SelectedGameMode = mode;
+            SessionData.HiddenSession = hidden;
             ApplySessionFields();
             SetMenuInteractable(false);
             try
             {
                 if (!TryResolveConnectionManager(out var cm))
                 {
+                    SessionReconnectStore.Clear();
+                    RefreshReconnectButton();
                     _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
+                    SetMenuInteractable(true);
                     return;
                 }
 
                 var ok = await cm.ReconnectSessionAsync(room);
                 if (!ok)
                 {
+                    SessionReconnectStore.Clear();
+                    RefreshReconnectButton();
                     _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                     SetMenuInteractable(true);
                 }
@@ -301,6 +422,8 @@ namespace FusionMultiplayer.UI
             catch (Exception ex)
             {
                 Debug.LogWarning($"[FusionMultiplayer] Reconnect failed: {ex.Message}");
+                SessionReconnectStore.Clear();
+                RefreshReconnectButton();
                 _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                 SetMenuInteractable(true);
             }
@@ -310,6 +433,7 @@ namespace FusionMultiplayer.UI
         {
             CleanupDropdownOverlay();
             GetComponent<CareerStatsHud>()?.Close();
+            _currentPage = page;
 
             if (_landingPage != null)
                 _landingPage.SetActive(page == MainMenuPage.Landing);
@@ -326,6 +450,11 @@ namespace FusionMultiplayer.UI
 
             if (page == MainMenuPage.Create || page == MainMenuPage.Join)
                 _sessionBrowser?.RefreshSelectors();
+
+            if (page == MainMenuPage.Landing)
+                RefreshReconnectButton();
+            else
+                _reconnectProbeId++;
         }
 
         private void CleanupDropdownOverlay()

@@ -37,6 +37,7 @@ namespace FusionMultiplayer.Player
         private Renderer[] _visualRenderers;
         private Collider[] _hitColliders;
         private CharacterController _characterController;
+        private NetworkTransform _networkTransform;
         private bool _corpseVisible = true;
         private MaterialPropertyBlock _mpb;
         private string _lastNameTag;
@@ -51,6 +52,7 @@ namespace FusionMultiplayer.Player
         private void CacheCorpseParts()
         {
             _characterController = GetComponent<CharacterController>();
+            _networkTransform = GetComponent<NetworkTransform>();
             _hitColliders = GetComponentsInChildren<Collider>(true);
             _visualRenderers = GetComponentsInChildren<Renderer>(true);
             if (_nameTag == null)
@@ -69,6 +71,8 @@ namespace FusionMultiplayer.Player
                 IsDead = false;
                 PushFromLocalPlayerData();
             }
+
+            RefreshNetworkTransformForAuthority();
 
             var camTr = transform.Find("PlayerCamera");
             if (camTr != null)
@@ -104,8 +108,22 @@ namespace FusionMultiplayer.Player
             PlayerRegistry.RegisterAvatar(this);
         }
 
+        /// <summary>Local predicted clients skip NT so CC does not fight interpolated pose.</summary>
+        private void RefreshNetworkTransformForAuthority()
+        {
+            if (_networkTransform == null)
+                _networkTransform = GetComponent<NetworkTransform>();
+            if (_networkTransform == null)
+                return;
+
+            var predictLocally = HasInputAuthority && !HasStateAuthority;
+            _networkTransform.enabled = !predictLocally;
+        }
+
         public override void FixedUpdateNetwork()
         {
+            RefreshNetworkTransformForAuthority();
+
             if (HasStateAuthority)
             {
                 PushFromLocalPlayerData();

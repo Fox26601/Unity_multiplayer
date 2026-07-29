@@ -48,8 +48,8 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 
 ## F — Crash reconnect
 
-1. During a match, note room name; force-quit the client (do not use Leave — that clears the reconnect store).
-2. Relaunch → Main Menu shows **Reconnect**.
+1. During a match, note room name; Leave to main menu **or** force-quit the client (both keep the reconnect store).
+2. Relaunch / Main Menu shows **Reconnect**.
 3. Reconnect sends the same `ConnectionToken`; server restores `InputAuthority` on the existing avatar and disables the bot.
 4. If Join/Reconnect previously failed with `GameClosed (32764)`, confirm `SessionLock` keeps `IsOpen=true` and only sets `phase=Started` (host `OnConnectRequest` refuses unknown tokens).
 
@@ -81,8 +81,8 @@ Manual checks: bot patrols across the map after disconnect; stand behind a corne
 - [ ] Build/Sandbox place/remove; Build: only placer removes own blocks
 - [ ] Started rooms not joinable (except known reconnect token)
 - [ ] Leave → Main Menu: cursor unlocked, buttons clickable
-- [ ] Leave clears reconnect store + remints ConnectionToken; force-quit keeps token → Reconnect works
-- [ ] After Leave, Quick Join may show no open rooms if only STARTED soft-lock sessions remain — Create room works; stale-token join ghost does not
+- [ ] Leave mid-match keeps reconnect store + token (bot takeover); lobby Leave clears store; force-quit also keeps token → Reconnect works
+- [ ] After Leave mid-match, Quick Join may show no open rooms if only STARTED soft-lock sessions remain — use Reconnect or Create room
 - [ ] Second peer without token cannot Join STARTED (soft-lock preserved)
 - [ ] Career Leaderboard opens after a finished match; no `BOT …` rows
 - [ ] Duplicate nickname rejected with clear Main Menu error

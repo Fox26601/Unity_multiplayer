@@ -205,14 +205,27 @@ namespace FusionMultiplayer.Player
         private bool TryGetAimRay(out Ray ray)
         {
             ray = default;
-            var cam = _cameraTransform != null ? _cameraTransform.GetComponent<Camera>() : null;
-            if (cam == null)
-                cam = Camera.main;
+            var yaw = transform.eulerAngles.y;
+            var pitch = 0f;
+            if (GetInput(out GameplayNetworkInput input))
+            {
+                yaw = input.LookYaw;
+                pitch = input.LookPitch;
+            }
+            else if (PlayerLook.TryGetLocalLook(out var liveYaw, out var livePitch))
+            {
+                yaw = liveYaw;
+                pitch = livePitch;
+            }
 
-            if (cam == null)
-                return false;
+            var rot = PlayerWeapon.AimRotation(yaw, pitch);
+            var eye = transform.position + Vector3.up * 1.6f;
+            if (_cameraTransform == null)
+                _cameraTransform = transform.Find("PlayerCamera");
+            if (_cameraTransform != null)
+                eye = transform.position + Vector3.up * _cameraTransform.localPosition.y;
 
-            ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            ray = new Ray(eye, rot * Vector3.forward);
             return true;
         }
 

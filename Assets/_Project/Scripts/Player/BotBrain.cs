@@ -23,7 +23,7 @@ namespace FusionMultiplayer.Player
         [SerializeField] private float _combatRange = 14f;
         [SerializeField] private float _eyeHeight = 1.5f;
         [SerializeField] private float _chestHeight = 1.2f;
-        [SerializeField] private float _thinkInterval = 0.25f;
+        [SerializeField] private float _thinkInterval = 0.35f;
         [SerializeField] private float _searchDuration = 4.5f;
         [SerializeField] private float _aimAngleDegrees = 12f;
         [SerializeField] private float _fireCooldown = 0.55f;
@@ -88,6 +88,9 @@ namespace FusionMultiplayer.Player
             PickPatrolTarget();
             _lastPosSample = transform.position;
             _stuckSince = -1f;
+            var stagger = (GetInstanceID() & 7) * 0.04f;
+            _nextThinkTime = SimulationNow() + stagger;
+            _nextSteerTime = SimulationNow() + stagger * 0.5f;
 
             if (_cc != null && _avatar != null && _avatar.IsAlive && !_cc.enabled)
                 _cc.enabled = true;
@@ -285,35 +288,50 @@ namespace FusionMultiplayer.Player
             var mid = transform.position + Vector3.up * (_cc.height * 0.35f);
 
             // Blocked at mid-torso → possible ledge / wall.
-            if (!Physics.SphereCast(
-                    mid,
-                    _steerProbeRadius * 0.85f,
-                    flat,
-                    out var midHit,
-                    _climbProbeDistance,
-                    Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore) ||
-                IsOwnCollider(midHit.collider) ||
-                midHit.collider.GetComponentInParent<PlayerAvatar>() != null)
-            {
+            var midCount = Physics.SphereCastNonAlloc(
+                mid,
+                _steerProbeRadius * 0.85f,
+                flat,
+                _hits,
+                _climbProbeDistance,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+            if (midCount <= 0)
                 return false;
+
+            var midHit = _hits[0];
+            for (var h = 1; h < midCount; h++)
+            {
+                if (_hits[h].distance < midHit.distance)
+                    midHit = _hits[h];
             }
+
+            if (IsOwnCollider(midHit.collider) ||
+                midHit.collider.GetComponentInParent<PlayerAvatar>() != null)
+                return false;
 
             // Open space above foot height + max ledge → can land on top.
             var topCheckOrigin = transform.position + Vector3.up * (_maxAutoJumpLedge + 0.15f);
-            if (Physics.SphereCast(
-                    topCheckOrigin,
-                    _steerProbeRadius * 0.7f,
-                    flat,
-                    out var topHit,
-                    _climbProbeDistance,
-                    Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore) &&
-                !IsOwnCollider(topHit.collider) &&
-                topHit.collider.GetComponentInParent<PlayerAvatar>() == null)
+            var topCount = Physics.SphereCastNonAlloc(
+                topCheckOrigin,
+                _steerProbeRadius * 0.7f,
+                flat,
+                _hits,
+                _climbProbeDistance,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+            if (topCount > 0)
             {
-                // Tall wall / 2+ blocks — do not jump.
-                return false;
+                var topHit = _hits[0];
+                for (var h = 1; h < topCount; h++)
+                {
+                    if (_hits[h].distance < topHit.distance)
+                        topHit = _hits[h];
+                }
+
+                if (!IsOwnCollider(topHit.collider) &&
+                    topHit.collider.GetComponentInParent<PlayerAvatar>() == null)
+                    return false;
             }
 
             // Measure ledge top relative to feet.
@@ -393,6 +411,10 @@ namespace FusionMultiplayer.Player
                 var sq = delta.sqrMagnitude;
                 if (sq > maxSq)
                     continue;
+
+                if (sq > 0.01f && Vector3.Angle(transform.forward, delta) > 90f)
+                    continue;
+
                 if (!HasLineOfSight(other))
                     continue;
 
@@ -420,6 +442,14 @@ namespace FusionMultiplayer.Player
                 return true;
 
             var dir = to / dist;
+            var flatFwd = transform.forward;
+            flatFwd.y = 0f;
+            var flatTo = to;
+            flatTo.y = 0f;
+            if (flatFwd.sqrMagnitude > 0.01f && flatTo.sqrMagnitude > 0.01f &&
+                Vector3.Angle(flatFwd, flatTo) > 90f)
+                return false;
+
             var count = Physics.SphereCastNonAlloc(
                 origin,
                 0.12f,
@@ -476,26 +506,27 @@ namespace FusionMultiplayer.Player
             for (var i = 0; i < WhiskerAngles.Length; i++)
             {
                 var dir = Quaternion.Euler(0f, WhiskerAngles[i], 0f) * desiredFlat;
-                var blocked = Physics.SphereCast(
+                var count = Physics.SphereCastNonAlloc(
                     origin,
                     _steerProbeRadius,
                     dir,
-                    out var hit,
+                    _hits,
                     _steerProbeDistance,
                     Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore);
 
-                float clearance;
-                if (!blocked || IsOwnCollider(hit.collider))
+                float clearance = _steerProbeDistance;
+                if (count > 0)
                 {
-                    clearance = _steerProbeDistance;
-                }
-                else
-                {
-                    var hitAvatar = hit.collider.GetComponentInParent<PlayerAvatar>();
-                    if (hitAvatar != null)
-                        clearance = _steerProbeDistance;
-                    else
+                    var hit = _hits[0];
+                    for (var h = 1; h < count; h++)
+                    {
+                        if (_hits[h].distance < hit.distance)
+                            hit = _hits[h];
+                    }
+
+                    if (!IsOwnCollider(hit.collider) &&
+                        hit.collider.GetComponentInParent<PlayerAvatar>() == null)
                         clearance = hit.distance;
                 }
 
@@ -507,21 +538,31 @@ namespace FusionMultiplayer.Player
                 }
             }
 
-            if (Physics.SphereCast(
-                    origin,
-                    _steerProbeRadius,
-                    desiredFlat,
-                    out var centerHit,
-                    _steerProbeDistance * 0.85f,
-                    Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore) &&
-                !IsOwnCollider(centerHit.collider) &&
-                centerHit.collider.GetComponentInParent<PlayerAvatar>() == null)
+            var centerCount = Physics.SphereCastNonAlloc(
+                origin,
+                _steerProbeRadius,
+                desiredFlat,
+                _hits,
+                _steerProbeDistance * 0.85f,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+            if (centerCount > 0)
             {
-                var slide = Vector3.ProjectOnPlane(desiredFlat, centerHit.normal);
-                slide.y = 0f;
-                if (slide.sqrMagnitude > 0.01f)
-                    bestDir = (bestDir + slide.normalized).normalized;
+                var centerHit = _hits[0];
+                for (var h = 1; h < centerCount; h++)
+                {
+                    if (_hits[h].distance < centerHit.distance)
+                        centerHit = _hits[h];
+                }
+
+                if (!IsOwnCollider(centerHit.collider) &&
+                    centerHit.collider.GetComponentInParent<PlayerAvatar>() == null)
+                {
+                    var slide = Vector3.ProjectOnPlane(desiredFlat, centerHit.normal);
+                    slide.y = 0f;
+                    if (slide.sqrMagnitude > 0.01f)
+                        bestDir = (bestDir + slide.normalized).normalized;
+                }
             }
 
             return bestDir;

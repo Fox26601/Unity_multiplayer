@@ -54,7 +54,7 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            // Client prediction: same motor from local input; NetworkTransform reconciles to SA.
+            // Client prediction: same motor from local input (NT off while predicting).
             if (HasInputAuthority)
                 ApplyInputMotor();
         }
@@ -67,7 +67,11 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            var basis = Quaternion.Euler(0f, input.LookYaw, 0f);
+            var yaw = input.LookYaw;
+            if (HasInputAuthority && PlayerLook.TryGetLocalLook(out var liveYaw, out _))
+                yaw = liveYaw;
+
+            var basis = Quaternion.Euler(0f, yaw, 0f);
             var horizontal = basis * Vector3.forward * (input.MoveForward * _moveSpeed)
                              + basis * Vector3.right * (input.Strafe * _moveSpeed);
             var wantJump = input.Buttons.WasPressed(_previousButtons, GameplayButton.Jump);

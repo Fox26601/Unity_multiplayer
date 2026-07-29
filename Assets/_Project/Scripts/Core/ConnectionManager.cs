@@ -320,8 +320,11 @@ namespace FusionMultiplayer.Core
             _activeRoomName = roomName.Trim();
             if (!dedicated && !offline)
             {
-                SessionReconnectStore.Save(_activeRoomName, SessionData.EnsureReconnectToken(),
-                    SessionData.SelectedGameMode);
+                SessionReconnectStore.Save(
+                    _activeRoomName,
+                    SessionData.EnsureReconnectToken(),
+                    SessionData.SelectedGameMode,
+                    SessionData.HiddenSession);
             }
 
             MppmSessionBridge.PublishRoom(_activeRoomName);
@@ -409,6 +412,38 @@ namespace FusionMultiplayer.Core
             return await JoinSessionAsync(best.Name);
         }
 
+        /// <summary>
+        /// True if a lobby session with this exact name is currently listed (does not Join).
+        /// Offline always false. STARTED soft-lock rooms stay listable while IsOpen.
+        /// </summary>
+        public async Task<bool> ProbeReconnectRoomAsync(string roomName, SessionCatalog.GameModeKind mode)
+        {
+            if (string.IsNullOrWhiteSpace(roomName) || SessionData.UseOfflineMode)
+                return false;
+
+            var target = roomName.Trim();
+            try
+            {
+                if (!await EnsureSessionLobbyAsync(mode))
+                    return false;
+
+                await WaitForSessionListAsync(2.5f);
+
+                foreach (var info in _sessionList)
+                {
+                    if (info != null && info.IsValid &&
+                        string.Equals(info.Name, target, StringComparison.Ordinal))
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[FusionMultiplayer] ProbeReconnectRoom failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
         /// <summary>Waits for Photon to push a session list after joining a lobby.</summary>
         private async Task WaitForSessionListAsync(float timeoutSeconds)
         {
@@ -475,45 +510,14 @@ namespace FusionMultiplayer.Core
             GameplayInputMode.SetMenu();
         }
 
-        /// <summary>Notify host, then shut down and return to Main Menu.</summary>
+        /// <summary>
+        /// Leave to Main Menu. Mid-match keeps reconnect store/token (same as force-quit);
+        /// lobby leave clears them.
+        /// </summary>
         public async Task LeaveToMainMenuAsync()
         {
-            await NotifyIntentionalLeaveAsync();
-            await ShutdownToMainMenuAsync(clearReconnect: true);
-        }
-
-        private async Task NotifyIntentionalLeaveAsync()
-        {
-            if (_runner == null || !_runner.IsRunning)
-                return;
-
-            var local = _runner.LocalPlayer;
-            if (local == PlayerRef.None)
-                return;
-
-            var pd = PlayerRegistry.FindPlayerData(local) ?? PlayerOwnership.FindPlayerData(local);
-            if (pd == null || !pd.Object || !pd.Object.IsValid)
-                return;
-
-            try
-            {
-                pd.RpcNotifyIntentionalLeave();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[FusionMultiplayer] Intentional leave RPC failed: {ex.Message}");
-                return;
-            }
-
-            var deadline = Time.realtimeSinceStartup + 0.5f;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                if (pd == null || pd.Object == null || !pd.Object.IsValid)
-                    break;
-                await Task.Yield();
-            }
-
-            await Task.Delay(50);
+            var inMatch = SceneIndices.IsGameScene(SceneManager.GetActiveScene().buildIndex);
+            await ShutdownToMainMenuAsync(clearReconnect: !inMatch);
         }
 
         /// <summary>Client: store error, leave session, reload Main Menu.</summary>
@@ -659,19 +663,8 @@ namespace FusionMultiplayer.Core
             if (NetworkAuthority.IsServerOrHost(runner))
             {
                 var pd = PlayerOwnership.FindPlayerData(player);
-                if (pd == null || pd.Object == null || !pd.Object.IsValid)
-                    return;
-
-                PlayerRegistry.NotifyReconnectTokenChanged(pd);
-                if (string.IsNullOrWhiteSpace(pd.ReconnectToken.ToString()))
-                    return;
-
-                if (pd.CharacterIndex < 0)
-                {
-                    var avatar = PlayerOwnership.FindAvatar(player);
-                    if (avatar == null || avatar.Object == null || !avatar.Object.IsValid)
-                        return;
-                }
+                if (pd != null)
+                    PlayerRegistry.NotifyReconnectTokenChanged(pd);
 
                 BotTakeover.TryReplaceDisconnectedPlayer(runner, player);
             }
