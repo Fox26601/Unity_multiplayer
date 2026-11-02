@@ -20,6 +20,7 @@ namespace FusionMultiplayer.UI
 
         private Text _statusLegacy;
         private bool _hasSpawnedAvatar;
+        private bool _reselectActive;
         private int _pendingSlot = -1;
         private bool _retryPendingWhenGmReady;
         private TMP_Text _spawnBanner;
@@ -27,6 +28,8 @@ namespace FusionMultiplayer.UI
         private float _nextSlotPollTime;
         private bool _gameManagerWatchRunning;
         private bool _gameManagerTimedOut;
+
+        public bool IsReselectActive => _reselectActive;
 
         /// <summary>Called by GameUiRuntimeRebuild after it creates TMP widgets.</summary>
         public void BindRuntimeTmp(Button[] characterButtons, TMP_Text statusText, GameObject panelRoot)
@@ -50,6 +53,9 @@ namespace FusionMultiplayer.UI
 
         private bool TryAdoptExistingSpawn()
         {
+            if (_reselectActive)
+                return false;
+
             if (_hasSpawnedAvatar)
             {
                 HidePanel();
@@ -116,6 +122,7 @@ namespace FusionMultiplayer.UI
         private void MarkSpawnedWithoutRequest(int slotIndex, bool hasAvatar)
         {
             _pendingSlot = -1;
+            _reselectActive = false;
             _hasSpawnedAvatar = true;
             _retryPendingWhenGmReady = false;
             HidePanel();
@@ -138,6 +145,52 @@ namespace FusionMultiplayer.UI
         {
             if (_panelRoot != null)
                 _panelRoot.SetActive(false);
+        }
+
+        private void ShowPanel()
+        {
+            if (_panelRoot != null)
+                _panelRoot.SetActive(true);
+        }
+
+        /// <summary>
+        /// Pause → Change character: re-open select so a different free slot can be requested (F4).
+        /// Blocks auto-adopt until the player picks a slot or cancels.
+        /// </summary>
+        public void BeginReselect()
+        {
+            if (_gameManagerTimedOut)
+                return;
+
+            _reselectActive = true;
+            _hasSpawnedAvatar = false;
+            _pendingSlot = -1;
+            _retryPendingWhenGmReady = false;
+            ShowPanel();
+            SetStatusText(UiCopy.CharacterSelectPrompt);
+            GameplayInputMode.SetMenu();
+            RefreshAllSlots();
+        }
+
+        /// <summary>Leave reselect without changing seat (Resume / Esc cancel).</summary>
+        public void CancelReselect()
+        {
+            if (!_reselectActive)
+                return;
+
+            _reselectActive = false;
+            _pendingSlot = -1;
+            if (TryResolveExistingSeat(out var slotIndex, out var hasAvatar) && hasAvatar)
+            {
+                MarkSpawnedWithoutRequest(slotIndex, true);
+                return;
+            }
+
+            _hasSpawnedAvatar = false;
+            ShowPanel();
+            SetStatusText(UiCopy.CharacterSelectPrompt);
+            GameplayInputMode.SetMenu();
+            RefreshAllSlots();
         }
 
         private static bool HasLocalSpawnedAvatar() =>
@@ -316,15 +369,23 @@ namespace FusionMultiplayer.UI
                 if (btn == null) continue;
 
                 var owner = gmReady ? gm.GetCharacterOwner(i) : PlayerRef.None;
+                var pd = ResolveSlotPlayerData(i, owner);
+                var reclaimable = IsLocalReconnectSeat(pd);
+                // After reconnect B: own former bot/stale seat shows FREE until re-pick.
+                var displayOwner = reclaimable ? PlayerRef.None : owner;
+                var isBot = !reclaimable && pd != null && (bool)pd.IsBotControlled;
                 var isLocal = owner != PlayerRef.None && owner == localPlayer;
-                var taken = owner != PlayerRef.None;
+                var taken = !reclaimable && (owner != PlayerRef.None || isBot);
                 var pending = _pendingSlot == i && !_hasSpawnedAvatar;
+                // During reselect, own seat stays clickable (same-slot adopt / cancel).
+                var canClick = !taken || isLocal || reclaimable;
 
-                btn.interactable = gmReady && !_hasSpawnedAvatar && !taken && !_gameManagerTimedOut;
+                btn.interactable = gmReady && !_hasSpawnedAvatar && canClick && !_gameManagerTimedOut;
 
+                var nick = reclaimable ? string.Empty : ResolveSlotNickname(pd, owner);
+                var tint = pd != null && !reclaimable ? pd.Tint : ResolveOwnerTint(displayOwner);
                 var slot = btn.GetComponent<CharacterSlotButton>();
-                slot?.RefreshVisual(owner, ResolveOwnerNickname(owner), ResolveOwnerTint(owner),
-                    _hasSpawnedAvatar, isLocal);
+                slot?.RefreshVisual(displayOwner, nick, tint, _hasSpawnedAvatar, isLocal, isBot);
 
                 if (pending)
                 {
@@ -339,7 +400,9 @@ namespace FusionMultiplayer.UI
             {
                 _retryPendingWhenGmReady = false;
                 var slot = _pendingSlot;
-                if (gm.GetCharacterOwner(slot) != PlayerRef.None)
+                var pendingOwner = gm.GetCharacterOwner(slot);
+                var pendingPd = ResolveSlotPlayerData(slot, pendingOwner);
+                if (IsSlotTakenByOther(pendingOwner, pendingPd, localPlayer))
                 {
                     _pendingSlot = -1;
                     SetStatusText(UiCopy.CharacterSlotTaken(slot));
@@ -355,8 +418,16 @@ namespace FusionMultiplayer.UI
         public void OnPickCharacter(int index)
         {
             if (_hasSpawnedAvatar || _gameManagerTimedOut) return;
-            if (TryAdoptExistingSpawn())
+
+            // Same-seat click (YOU): exit reselect / adopt without a new RequestCharacter.
+            // Different free slot goes through RequestCharacter → ReleasePreviousSeats.
+            if (TryResolveExistingSeat(out var existingSlot, out var hasAvatar) &&
+                existingSlot == index)
+            {
+                _reselectActive = false;
+                MarkSpawnedWithoutRequest(existingSlot, hasAvatar);
                 return;
+            }
 
             _pendingSlot = index;
             SetStatusText(UiCopy.CharacterSelectRequesting(index));
@@ -379,7 +450,9 @@ namespace FusionMultiplayer.UI
                 return;
             }
 
-            if (gm.GetCharacterOwner(index) != PlayerRef.None)
+            var slotOwner = gm.GetCharacterOwner(index);
+            var slotPd = ResolveSlotPlayerData(index, slotOwner);
+            if (IsSlotTakenByOther(slotOwner, slotPd, runner.LocalPlayer))
             {
                 _pendingSlot = -1;
                 SetStatusText(UiCopy.CharacterSlotTaken(index));
@@ -392,8 +465,13 @@ namespace FusionMultiplayer.UI
 
         private void OnApproved(int index, Vector3 position, Quaternion rotation)
         {
-            // Server already spawned the avatar (Client-Server / Dedicated Server).
+            // Shared Mode: local player spawns avatar with SA+IA after master slot approval.
+            var gm = GameManager.Instance;
+            if (gm != null)
+                gm.TrySpawnLocalAvatar(index, position, rotation);
+
             _pendingSlot = -1;
+            _reselectActive = false;
             _hasSpawnedAvatar = true;
             HidePanel();
             SetStatusText(UiCopy.CharacterSpawned);
@@ -467,11 +545,62 @@ namespace FusionMultiplayer.UI
             else if (_statusLegacy != null) _statusLegacy.text = value;
         }
 
-        private static string ResolveOwnerNickname(PlayerRef owner)
+        private static PlayerData ResolveSlotPlayerData(int slot, PlayerRef owner)
         {
-            if (owner == PlayerRef.None) return string.Empty;
-            var pd = PlayerRegistry.FindPlayerData(owner);
-            return pd != null ? pd.Nick.ToString() : string.Empty;
+            if (owner != PlayerRef.None)
+            {
+                var byOwner = PlayerRegistry.FindPlayerData(owner) ??
+                              PlayerOwnership.FindPlayerData(owner, slot);
+                if (byOwner != null)
+                    return byOwner;
+            }
+
+            return PlayerRegistry.FindPlayerDataBySlot(slot);
+        }
+
+        /// <summary>
+        /// Former bot / stale seat belonging to this client's reconnect token — treat as free to pick.
+        /// </summary>
+        private static bool IsLocalReconnectSeat(PlayerData pd)
+        {
+            if (pd == null || pd.Object == null || !pd.Object.IsValid)
+                return false;
+
+            var localToken = SessionData.ReconnectToken;
+            if (string.IsNullOrWhiteSpace(localToken))
+                return false;
+
+            var seatToken = pd.ReconnectToken.ToString().Trim();
+            if (!string.Equals(seatToken, localToken.Trim(), System.StringComparison.Ordinal))
+                return false;
+
+            // After RestorePlayer clears CharacterIndex, slot data may be gone — still match by IA.
+            var runner = ConnectionManager.Instance != null ? ConnectionManager.Instance.Runner : null;
+            if (runner != null && runner.IsRunning && pd.Object.InputAuthority == runner.LocalPlayer)
+                return true;
+
+            return (bool)pd.IsBotControlled || pd.CharacterIndex >= 0;
+        }
+
+        private static bool IsSlotTakenByOther(PlayerRef slotOwner, PlayerData slotPd, PlayerRef localPlayer)
+        {
+            if (IsLocalReconnectSeat(slotPd))
+                return false;
+
+            if (slotOwner != PlayerRef.None && slotOwner != localPlayer)
+                return true;
+
+            return slotPd != null && (bool)slotPd.IsBotControlled && slotOwner != localPlayer;
+        }
+
+        private static string ResolveSlotNickname(PlayerData pd, PlayerRef owner)
+        {
+            if (pd != null)
+                return pd.Nick.ToString();
+            if (owner == PlayerRef.None)
+                return string.Empty;
+            var byOwner = PlayerRegistry.FindPlayerData(owner);
+            return byOwner != null ? byOwner.Nick.ToString() : string.Empty;
         }
 
         private static Color ResolveOwnerTint(PlayerRef owner)

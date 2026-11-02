@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b2c77efa459458eb53c78abb2737e2, type: 3}
+  m_Name: MatchConfig
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.MatchConfig
+  _matchDurationSeconds: 300
+  _voteDurationSeconds: 30
+  _physicsPropFirstDelayMin: 20
+  _physicsPropFirstDelayMax: 35
+  _physicsPropRepeatMin: 18
+  _physicsPropRepeatMax: 30

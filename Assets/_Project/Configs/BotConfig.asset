@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf5f74c04fb1c482bae227324576c2b6, type: 3}
+  m_Name: BotConfig
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.BotConfig
+  _detectRadius: 35
+  _combatRange: 14
+  _eyeHeight: 1.5
+  _chestHeight: 1.2
+  _thinkInterval: 0.35
+  _searchDuration: 4.5
+  _aimAngleDegrees: 12
+  _fireCooldown: 0.55
+  _patrolSpeed: 3.5
+  _chaseSpeed: 5.5
+  _combatStrafeSpeed: 2.2
+  _steerProbeDistance: 1.75
+  _steerProbeRadius: 0.28
+  _stuckSeconds: 1.1
+  _stuckMoveEpsilon: 0.08
+  _climbProbeDistance: 0.55
+  _maxAutoJumpLedge: 1.15

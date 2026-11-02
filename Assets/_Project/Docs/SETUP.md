@@ -5,7 +5,8 @@
 This repository **does not ship** the Photon Fusion binaries (license). Gameplay code lives in assembly **`FusionMultiplayer.Runtime`**, which references **`Fusion.Unity`**.
 
 - If you see **`CS0246: Fusion could not be found`** (or “missing assembly Fusion.Unity”), you **have not imported** the Fusion SDK yet. See **`Assets/IMPORT_PHOTON_FUSION_FIRST.txt`**.
-- After importing Fusion, open **Fusion → Network Project Config**, find **Assemblies To Weave**, add **`FusionMultiplayer.Runtime`**, then click **Apply** (required when using custom asmdefs with Fusion).
+- After importing Fusion, open **Fusion → Network Project Config**, find **Assemblies To Weave**, add **`FusionMultiplayer.Runtime`** (not UI), then click **Apply** (required when using custom asmdefs with Fusion).
+- Project layout: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -15,10 +16,10 @@ This repository **does not ship** the Photon Fusion binaries (license). Gameplay
 
 ## Topology
 
-- **Editor create:** `GameMode.Host` (Client-Server authority).
-- **Editor/client join:** `GameMode.Client`.
-- **Dedicated process:** `GameMode.Server` via `-dedicated -room=Name`.
+- **Create and join:** `GameMode.Shared` (Shared Mode — one master client among peers).
+- **Offline:** `GameMode.Single` (Tools → Enable Offline Play).
 - Opening scene in Build Settings: **`00_Boot`** → Main Menu.
+- Dedicated Server is **not** used for this submission.
 
 ## Where is the menu / UI?
 
@@ -45,12 +46,13 @@ Once after cloning the repo:
    - Scenes: `00_Boot`, `00_MainMenu`, `01_Lobby`, `02_Game_Arena`, `03_Game_Plaza`, `04_Game_Ruins`
    - Prefabs: `PlayerData`, `PlayerAvatar`, `PlacedBlock`, `Projectile` under `Assets/_Project/Prefabs/`
    - **File → Build Settings** entries must keep Boot → MainMenu → Lobby → maps in that order.
+   - Also creates **ScriptableObject configs** under `Assets/_Project/Configs/` and hub `Resources/Configs/GameConfigs` (or run **Create Default Config Assets** alone after pull).
    If UI looks broken after an upgrade, run **Fix UI Layout In Scenes** (also runs **Patch UI Scenes On Disk**) or regenerate.
 4. Open **Fusion → Network Project Config** (or the Fusion project settings window):
    - **Register network prefabs:** `PlayerData`, `PlayerAvatar`, `PlacedBlock`, `Projectile`, `PhysicsProp`
-   - **Peer Mode:** Client-Server (Host / Client / Dedicated Server) — not Shared Mode
    - **Tick Rate:** confirm values shipped in `NetworkProjectConfig.fusion` → **Apply** if changed
    - **Input Data Word Count:** **5** (WASD + strafe + look deltas + buttons) → **Apply**
+   - Runtime topology is **Shared Mode** (`GameMode.Shared` in `NetworkAuthority.ResolveStartMode`)
 5. Ensure **Multiplayer Play Mode** (or three standalone builds) can run **three clients** for the assignment test.
 6. **Validate wiring:** **Tools → Fusion Multiplayer → Validate Setup (Console Report)** and **Validate UI In Scenes**.
 
@@ -68,17 +70,17 @@ Once after cloning the repo:
 
 ## Session flow
 
-1. **Main menu** — nickname, random color, room name; **Create (Host)** or **Join (Client)** starts a Client-Server session (configurable max players) and loads the **lobby** scene. Dedicated servers use `-dedicated -room=Name`.
-2. **Lobby** — each client gets **PlayerData** (nick + color). Host/server (or client request RPC) uses **Start Game** to load the selected map for everyone.
-3. **Game** — pick a free character slot (0–9). **Server** approves ownership and spawn point; **PlayerAvatar** syncs with **NetworkTransform**. Projectiles use server-authoritative networked pose (no NetworkTransform). **Chat** (optional whisper by **exact nickname**). Match end → results / vote → **Leave to Main Menu** shuts down Fusion and returns to the menu.
+1. **Main menu** — nickname, random color, room name; **Create room** or **Join** starts a Shared Mode session (configurable max players) and loads the **lobby** scene.
+2. **Lobby** — each client spawns their own **PlayerData** (nick + color, SA+IA). Shared master (or client request RPC) uses **Start Game** to load the selected map for everyone.
+3. **Game** — pick a free character slot (0–9). **Master** approves occupancy; **local player** spawns **PlayerAvatar** with SA+IA. Movement uses Fusion **NetworkCharacterController**. Projectiles use shooter SA + **NetworkTransform** (TRSP). **Chat** (optional whisper by **exact nickname**). Match end → results / vote → **Leave to Main Menu** shuts down Fusion and returns to the menu.
 
-**Dynamic player count:** players may **join or leave at any time** while the session is open (up to **10**). Mid-match join is gated (started rooms refuse unknown tokens); reconnect restores a known `ConnectionToken`.
+**Dynamic player count:** players may **join or leave** while the lobby is open (up to **10**). After START the room is **hard-closed** (`IsOpen=false`). Crash reconnect uses a timed reconnect window (known `ConnectionToken` only). When the master leaves, Shared Mode migrates master to another client.
 
 ## Troubleshooting
 
 - **`CS0246` / `Fusion` namespace missing** — import the Fusion `.unitypackage` so the **`Fusion.Unity`** assembly exists. There is no supported way to compile this gameplay code without the official SDK.
 - **Fonts / UI unreadable** — UI uses **TextMeshPro** with dark buttons and light text. Run **Generate Scenes** or **Fix UI Layout In Scenes**. Set Game view **Scale 1x**.
-- **`[Fusion] Invalid TickRate`** — open Fusion → Network Project Config, confirm Client-Server tick/send rates match the shipped `NetworkProjectConfig.fusion`, then **Apply**.
+- **`[Fusion] Invalid TickRate`** — open Fusion → Network Project Config, confirm tick/send rates match the shipped `NetworkProjectConfig.fusion`, then **Apply**.
 - **`NetworkString` compile errors** — adjust `PlayerData` / RPC string conversion to your Fusion version (see Fusion docs for `NetworkString<_N>`).
 - **Scene / prefab not in build** — re-run the generator or re-add scenes in Build Settings (Boot → MainMenu → Lobby → maps).
 - **"The referenced script (Unknown) on this Behaviour is missing!"** on UI panels — older generated scenes used an Editor-only helper script. Current scenes use runtime rebuilds; re-run **Tools → Fusion Multiplayer → Generate…** or **Fix UI Layout In Scenes**.

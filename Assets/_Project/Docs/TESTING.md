@@ -2,88 +2,114 @@
 
 ## Topology under test
 
-- **Editor / local:** Create room uses `GameMode.Host`; join uses `GameMode.Client`.
+- **Editor / local:** Create and join both use `GameMode.Shared`.
 - **Opening scene:** Play from `00_Boot` (Build Settings index 0) → Main Menu.
-- **Dedicated:** Launch with `-dedicated -room=TestRoom` (`GameMode.Server`). Clients join the same room name.
+- **Offline:** Tools → Enable Offline Play → `GameMode.Single`.
+- All MPPM peers are equal Shared clients; one becomes Shared Mode master.
 
 ## A — Create / join / lobby start (mandatory)
 
 1. Client A: Main Menu → Create room (set max players ≥ 3, pick mode/map/difficulty).
 2. Clients B, C: Join the same room (or Quick Join with matching filters).
-3. Lobby shows all players; host/server presses **START GAME** (clients may request start).
+3. Lobby shows all players; Shared master presses **START GAME** (clients may request start).
 4. All load the selected map; character select appears.
 
-## B — Character slots + server spawn
+## B — Character slots + Shared spawn
 
-1. Each player picks a different slot — avatar appears for everyone.
+1. Each player picks a different slot — avatar appears for everyone (local SA+IA spawn after master approval).
 2. Attempt to pick a taken slot — reject message, no duplicate.
-3. Confirm only one body per player (server spawn, not client spawn).
+3. Confirm only one body per player.
 
 ## C — JSON MatchConfig RPC
 
-1. Enter game scene; console should log deserialized `MatchConfigDto` on server and ack on client.
+1. Enter game scene; console should log deserialized `MatchConfigDto` on master and ack on client.
 2. Payload includes room, max players, mode, map, difficulty, token, nickname (≥3 fields).
 
-## D — Combat / scores / timer / vote
+## D — Combat / scores / timer / vote (master RNG)
 
-1. Combat or Sandbox: shoot, confirm damage/kills.
-2. Tab scoreboard while alive.
-3. Wait for 5:00 timer (or End Game) → results + map vote → leave or new map.
+1. Combat or Sandbox: shoot — projectiles smooth on all clients (NetworkTransform TRSP).
+2. No mid-air hang; no `InvalidOperationException` on `Projectile.Spent`.
+3. Damage/kills work — crit roll happens on **Shared master** (`GameManager.RPC_RequestHit` → `CombatRules.RollDamage`).
+4. Tab scoreboard while alive.
+5. Wait for 5:00 timer (or End Game) → results + map vote → leave or new map.
 
 ## E — Disconnect + bot takeover
 
 1. Mid-match: quit Client B abruptly.
-2. Server keeps B’s avatar via character-slot ownership (Fusion clears `InputAuthority` on leave — lookup must not rely on it alone).
-3. Nick becomes `BOT …`; `IsBotControlled` badge.
-4. Bot AI runs in Fusion `FixedUpdateNetwork` via `PlayerMovement` (no NavMesh): **Patrol** → LOS → **Chase** / **Combat**; lose LOS → **Search** → **Patrol**. Whisker steering; auto-jump onto ~1-block ledges (apex 1.5 m); stuck recovery.
-5. Newly placed build blocks are normal Physics colliders — bot/player can walk/jump on them immediately.
-6. Local disconnect shows status via `SessionFlowUI` (`Disconnected: …`).
-
-Manual checks: bot patrols across the map after disconnect; stand behind a corner (stops firing); step into LOS (chase + shots); place a block in front (auto-jump or steer around, then walk on top).
+2. Shared master keeps B’s avatar; nick becomes `BOT …`.
+3. Console: reconnect window open (`SessionLock: Reconnect window open…`).
+4. Bot AI runs (patrol / chase / combat).
 
 ## E2 — Jump
 
-1. In gameplay, press **Space** — jump apex ~1.5 m (clear a single 1.0 tile block).
-2. Bot facing a 1-block ledge auto-jumps; taller walls are steered around.
+1. Press **Space** — jump apex ~1.5 m.
+2. Bot auto-jumps 1-block ledges.
 
-## F — Crash reconnect
+## E3 — Master migration (#6)
 
-1. During a match, note room name; Leave to main menu **or** force-quit the client (both keep the reconnect store).
-2. Relaunch / Main Menu shows **Reconnect**.
-3. Reconnect sends the same `ConnectionToken`; server restores `InputAuthority` on the existing avatar and disables the bot.
-4. If Join/Reconnect previously failed with `GameClosed (32764)`, confirm `SessionLock` keeps `IsOpen=true` and only sets `phase=Started` (host `OnConnectRequest` refuses unknown tokens).
+1. Note who is Shared master.
+2. Quit the master client.
+3. Remaining peer logs `Became Shared Mode master`; timer / slots / votes continue.
+4. New master can still resolve game-over / votes.
+
+## E4 — Hard-close (#13)
+
+1. After START, from a third client try Join same room name **without** reconnect token → refuse / GameClosed.
+2. Session browser / Quick Join must not treat the started room as an open lobby.
+
+## F — Crash reconnect (window)
+
+1. Mid-match force-quit (or Leave mid-match — token kept).
+2. Remaining peer opens reconnect window (~90s); console: `SessionLock: Reconnect window open…` and it must **not** close on the next tick.
+3. Main Menu → **Reconnect** within the window → bot body **despawns immediately**; former slot is **FREE**; **one** PlayerData kept (no duplicate).
+4. Character select → pick any free slot (including the old one) → one new avatar, full control.
+5. After reclaim (no bot seats left), room hard-closes again (`IsOpen=false`).
+6. **Window expiry (no reclaim):** after ~90s the room hard-closes (`IsOpen=false`); abandoned bot body + `PlayerData` are despawned; that token is no longer known; late join without a valid token is refused.
+7. Peer without known token cannot join during the window.
+
+### F2 — Master leave then reconnect
+
+1. Player 1 (creator/master) force-quit mid-match.
+2. Player 2: `Became Shared Mode master` then `Reconnect window open` (may be deferred one tick).
+3. Player 1 → Reconnect → bot despawned, slot FREE → pick character → full control.
+
+### F3 — Non-master leave then reconnect
+
+1. Player 2 force-quit mid-match while Player 1 remains master.
+2. Player 1 console: `Reconnect window open` (no immediate hard-close).
+3. Player 2 → Reconnect → bot despawned, slot FREE → pick character; no second PlayerData.
+
+### F4 — Mid-match change character
+
+1. In match with a spawned avatar: Esc → Pause → **Change character** → panel **stays open** until you click a slot.
+2. Pick a **different** free slot → old body despawns; only one avatar remains.
+3. Same-slot (YOU) or Resume from pause cancels reselect without a double body.
 
 ## G — Physics prop (animator deferred)
 
-1. During match, cyan physics spheres spawn periodically and bounce (`Networking.NetworkRigidbody3D` on `PhysicsProp`).
-2. NetworkMecanimAnimator — **not in this pass** (deferred).
+1. Cyan physics spheres spawn periodically (`Networking.NetworkRigidbody3D`).
+2. NetworkMecanimAnimator — **not claimed**.
 
 ## H — Database
 
-1. Finish a match (timer or End Game) — each peer writes `Application.persistentDataPath/fusion_match_stats.json` at game-over.
-2. Return to Main Menu — open **Leaderboard** → CAREER STATS modal shows rows (Close / Esc / click dim).
-3. Two clients with the same nickname: second is rejected, returned to Main Menu, and sees red status: nickname already taken (with the nickname).
-
-## I — Dedicated server smoke
-
-1. Start server: `… -batchmode -nographics -dedicated -room=Ded1`
-2. Two clients join `Ded1`, request start, play.
-3. Confirm server is StateAuthority (clients cannot spawn networked objects themselves).
-4. Kill one client → bot takeover; reconnect with Reconnect button → control restored.
+1. Finish a match — `fusion_match_stats.json` written.
+2. Main Menu → Leaderboard shows rows.
+3. Duplicate nickname rejected.
 
 ## Regression checklist
 
 - [ ] Boot → Main Menu loads
-- [ ] Join room page: session list loads without `JoinLobby … JoiningLobby` console errors
-- [ ] Mouse look smooth
-- [ ] Projectiles despawn on environment / corpses / timeout (≤5s)
-- [ ] Chat + whisper
-- [ ] Build/Sandbox place/remove; Build: only placer removes own blocks
-- [ ] Started rooms not joinable (except known reconnect token)
-- [ ] Leave → Main Menu: cursor unlocked, buttons clickable
-- [ ] Leave mid-match keeps reconnect store + token (bot takeover); lobby Leave clears store; force-quit also keeps token → Reconnect works
-- [ ] After Leave mid-match, Quick Join may show no open rooms if only STARTED soft-lock sessions remain — use Reconnect or Create room
-- [ ] Second peer without token cannot Join STARTED (soft-lock preserved)
-- [ ] Career Leaderboard opens after a finished match; no `BOT …` rows
-- [ ] Duplicate nickname rejected with clear Main Menu error
-- [ ] Tools → Validate Setup / Validate UI (own Photon App Id)
+- [ ] Shared Mode create/join (not Host)
+- [ ] Projectiles smooth; no Spent hang
+- [ ] Master-only crit (hits go through GameManager)
+- [ ] Hard-close after START; unknown join refused
+- [ ] P2 force-quit → window open stays → Reconnect works
+- [ ] P1 (master) force-quit → P2 become-master + window → P1 Reconnect works
+- [ ] Disconnect → bot + reconnect window
+- [ ] Reconnect within window: bot despawn + FREE slot; window closes after reclaim
+- [ ] Reconnect = one PlayerData; pick slot → one avatar (no duplicate PD)
+- [ ] Mid-match Change character → other slot → old body despawned
+- [ ] Master leave → `OnBecameSharedMaster`
+- [ ] Leave → Main Menu loop
+- [ ] Career Leaderboard after match
+- [ ] Tools → Validate Setup / Validate UI

@@ -18,12 +18,14 @@ namespace FusionMultiplayer.Player
 
         private Animator _animator;
         private NetworkMecanimAnimator _netAnimator;
+        private NetworkCharacterController _ncc;
         private CharacterController _cc;
         private Vector3 _lastPos;
         private double _shootPulseUntil;
 
         public override void Spawned()
         {
+            _ncc = GetComponent<NetworkCharacterController>();
             _cc = GetComponent<CharacterController>();
             _lastPos = transform.position;
             EnsureAnimatorStack();
@@ -45,7 +47,10 @@ namespace FusionMultiplayer.Player
             delta.y = 0f;
             var dt = Runner != null && Runner.DeltaTime > 0f ? Runner.DeltaTime : 0.016f;
             NetSpeed = delta.magnitude / Mathf.Max(0.0001f, dt);
-            NetGrounded = _cc == null || _cc.isGrounded;
+            if (_ncc != null)
+                NetGrounded = _ncc.Grounded;
+            else
+                NetGrounded = _cc == null || _cc.isGrounded;
             NetShoot = Runner != null && Runner.SimulationTime < _shootPulseUntil;
             ApplyAnimator();
         }

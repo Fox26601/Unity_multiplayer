@@ -46,6 +46,7 @@ namespace FusionMultiplayer.UI
             ConnectionManager.SessionFailed += OnSessionFailed;
             ConnectionManager.SceneLoaded += OnSceneLoaded;
             ConnectionManager.LocalDisconnectNotice += OnLocalDisconnect;
+            SessionStatusOverlay.Present += SetStatus;
 
             // Do not wipe a session error that survives Main Menu reload.
             if (string.IsNullOrWhiteSpace(SessionData.SessionError))
@@ -66,6 +67,7 @@ namespace FusionMultiplayer.UI
             ConnectionManager.SessionFailed -= OnSessionFailed;
             ConnectionManager.SceneLoaded -= OnSceneLoaded;
             ConnectionManager.LocalDisconnectNotice -= OnLocalDisconnect;
+            SessionStatusOverlay.Present -= SetStatus;
         }
 
         public void SetStatus(string message, bool isError)

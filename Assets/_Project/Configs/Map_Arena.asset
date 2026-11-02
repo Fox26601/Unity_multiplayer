@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb39cbd14bb804bf8b58cc70c94998b0, type: 3}
+  m_Name: Map_Arena
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.MapDefinition
+  _kind: 0
+  _label: Arena
+  _description: Walled combat arena with circular spawns.
+  _spawnPositions:
+  - {x: 0, y: 0, z: 12}
+  - {x: 7.053423, y: 0, z: 9.708204}
+  - {x: 11.412679, y: 0, z: 3.7082038}
+  - {x: 11.412679, y: 0, z: -3.7082033}
+  - {x: 7.053422, y: 0, z: -9.708204}
+  - {x: -0.0000010490733, y: 0, z: -12}
+  - {x: -7.0534215, y: 0, z: -9.708204}
+  - {x: -11.412678, y: 0, z: -3.7082052}
+  - {x: -11.412678, y: 0, z: 3.7082055}
+  - {x: -7.053424, y: 0, z: 9.708203}
+  _spawnYaws:
+  - -180
+  - -144
+  - -108
+  - -72
+  - -35.999996
+  - 0.0000050089557
+  - 35.999996
+  - 71.99999
+  - 108.00001
+  - 143.99998

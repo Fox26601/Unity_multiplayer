@@ -4,6 +4,7 @@
   "references": [
     "Fusion.Unity",
     "FusionMultiplayer.Runtime",
+    "FusionMultiplayer.UI",
     "Unity.InputSystem",
     "Unity.TextMeshPro"
   ],

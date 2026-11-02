@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Fusion;
 using FusionMultiplayer.Core;
+using FusionMultiplayer.Reconnect;
+using FusionMultiplayer.Session;
 using FusionMultiplayer.Player;
 using TMPro;
 using UnityEngine;
@@ -47,10 +49,7 @@ namespace FusionMultiplayer.UI
         private InputField _roomLegacy;
         private bool _wired;
         private MainMenuPage _currentPage = MainMenuPage.Landing;
-        private int _reconnectProbeId;
-        private float _lastReconnectListRefresh = -10f;
-        private bool _reconnectProbeRunning;
-        private bool _reconnectProbeQueued;
+        private readonly SessionReconnectPresenter _reconnectPresenter = new();
 
         private void OnEnable()
         {
@@ -58,14 +57,17 @@ namespace FusionMultiplayer.UI
             MainMenuRuntimeRebuild.EnsureBuilt(transform);
             GameplayInputMode.ChatBlockingGameplay = false;
             GameplayInputMode.SetMenu();
-            SubscribeReconnectProbe();
+            ConnectionManager.SessionListUpdated -= _reconnectPresenter.OnSessionListUpdated;
+            ConnectionManager.SessionListUpdated += _reconnectPresenter.OnSessionListUpdated;
+            _reconnectPresenter.ReconnectAvailableChanged -= OnReconnectAvailableChanged;
+            _reconnectPresenter.ReconnectAvailableChanged += OnReconnectAvailableChanged;
         }
 
         private void OnDisable()
         {
-            UnsubscribeReconnectProbe();
-            _reconnectProbeQueued = false;
-            _reconnectProbeId++;
+            ConnectionManager.SessionListUpdated -= _reconnectPresenter.OnSessionListUpdated;
+            _reconnectPresenter.ReconnectAvailableChanged -= OnReconnectAvailableChanged;
+            _reconnectPresenter.Cancel();
         }
 
         private void Awake()
@@ -243,113 +245,15 @@ namespace FusionMultiplayer.UI
                 SetRoomText("Room1");
             UpdatePreview();
             ShowPage(MainMenuPage.Landing);
-            RefreshReconnectButton();
         }
 
-        private void SubscribeReconnectProbe()
-        {
-            ConnectionManager.SessionListUpdated -= OnSessionListUpdatedForReconnect;
-            ConnectionManager.SessionListUpdated += OnSessionListUpdatedForReconnect;
-        }
-
-        private void UnsubscribeReconnectProbe()
-        {
-            ConnectionManager.SessionListUpdated -= OnSessionListUpdatedForReconnect;
-        }
-
-        private void OnSessionListUpdatedForReconnect(IReadOnlyList<SessionInfo> _)
-        {
-            if (_currentPage != MainMenuPage.Landing || !isActiveAndEnabled)
-                return;
-            if (Time.unscaledTime - _lastReconnectListRefresh < 0.75f)
-                return;
-            _lastReconnectListRefresh = Time.unscaledTime;
-            RefreshReconnectButton();
-        }
-
-        private void RefreshReconnectButton()
-        {
-            if (_reconnectProbeRunning)
-            {
-                _reconnectProbeQueued = true;
-                return;
-            }
-
-            _ = RefreshReconnectButtonLoopAsync();
-        }
-
-        private async Task RefreshReconnectButtonLoopAsync()
-        {
-            _reconnectProbeRunning = true;
-            try
-            {
-                do
-                {
-                    _reconnectProbeQueued = false;
-                    await RefreshReconnectButtonAsync();
-                } while (_reconnectProbeQueued);
-            }
-            finally
-            {
-                _reconnectProbeRunning = false;
-            }
-        }
-
-        private void SetReconnectButtonVisible(bool visible)
+        private void OnReconnectAvailableChanged(bool visible)
         {
             if (_reconnectButton == null)
                 return;
             _reconnectButton.gameObject.SetActive(visible);
             if (visible)
                 _reconnectButton.interactable = true;
-        }
-
-        private async Task RefreshReconnectButtonAsync()
-        {
-            var probeId = ++_reconnectProbeId;
-            SetReconnectButtonVisible(false);
-
-            if (SessionData.UseOfflineMode)
-            {
-                SessionReconnectStore.Clear();
-                return;
-            }
-
-            if (!SessionReconnectStore.TryLoad(out var room, out _, out var mode, out var hidden))
-                return;
-
-            if (!TryResolveConnectionManager(out var cm))
-            {
-                if (!hidden)
-                    SessionReconnectStore.Clear();
-                else
-                    SetReconnectButtonVisible(true);
-                return;
-            }
-
-            var found = false;
-            try
-            {
-                found = await cm.ProbeReconnectRoomAsync(room, mode);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[FusionMultiplayer] Reconnect probe failed: {ex.Message}");
-            }
-
-            if (probeId != _reconnectProbeId || !isActiveAndEnabled)
-                return;
-            if (_currentPage != MainMenuPage.Landing)
-                return;
-
-            if (found || hidden)
-            {
-                SetReconnectButtonVisible(true);
-                return;
-            }
-
-            SessionReconnectStore.Clear();
-            SetReconnectButtonVisible(false);
         }
 
         private void OnLeaderboardClicked() => GetComponent<CareerStatsHud>()?.Open();
@@ -367,13 +271,13 @@ namespace FusionMultiplayer.UI
             SetMenuInteractable(false);
             try
             {
-                if (!TryResolveConnectionManager(out var cm))
+                if (!TryResolveSessionConnection(out var session))
                 {
                     _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
                     return;
                 }
 
-                var ok = await cm.QuickJoinAsync();
+                var ok = await session.QuickJoinAsync();
                 if (!ok)
                     SetMenuInteractable(true);
             }
@@ -387,9 +291,9 @@ namespace FusionMultiplayer.UI
 
         private async Task StartReconnectAsync()
         {
-            if (!SessionReconnectStore.TryLoad(out var room, out var token, out var mode, out var hidden))
+            if (!_reconnectPresenter.TryLoadTarget(out var room, out var token, out var mode, out var hidden))
             {
-                RefreshReconnectButton();
+                _reconnectPresenter.NotifyReconnectFailed();
                 _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                 return;
             }
@@ -401,20 +305,18 @@ namespace FusionMultiplayer.UI
             SetMenuInteractable(false);
             try
             {
-                if (!TryResolveConnectionManager(out var cm))
+                if (!TryResolveSessionConnection(out var session))
                 {
-                    SessionReconnectStore.Clear();
-                    RefreshReconnectButton();
+                    _reconnectPresenter.NotifyReconnectFailed();
                     _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
                     SetMenuInteractable(true);
                     return;
                 }
 
-                var ok = await cm.ReconnectSessionAsync(room);
+                var ok = await session.ReconnectSessionAsync(room);
                 if (!ok)
                 {
-                    SessionReconnectStore.Clear();
-                    RefreshReconnectButton();
+                    _reconnectPresenter.NotifyReconnectFailed();
                     _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                     SetMenuInteractable(true);
                 }
@@ -422,8 +324,7 @@ namespace FusionMultiplayer.UI
             catch (Exception ex)
             {
                 Debug.LogWarning($"[FusionMultiplayer] Reconnect failed: {ex.Message}");
-                SessionReconnectStore.Clear();
-                RefreshReconnectButton();
+                _reconnectPresenter.NotifyReconnectFailed();
                 _sessionFlow?.SetStatus(UiCopy.ReconnectFailed, true);
                 SetMenuInteractable(true);
             }
@@ -451,10 +352,10 @@ namespace FusionMultiplayer.UI
             if (page == MainMenuPage.Create || page == MainMenuPage.Join)
                 _sessionBrowser?.RefreshSelectors();
 
-            if (page == MainMenuPage.Landing)
-                RefreshReconnectButton();
-            else
-                _reconnectProbeId++;
+            var onLanding = page == MainMenuPage.Landing;
+            _reconnectPresenter.SetLandingActive(onLanding);
+            if (onLanding)
+                _reconnectPresenter.Refresh();
         }
 
         private void CleanupDropdownOverlay()
@@ -522,8 +423,7 @@ namespace FusionMultiplayer.UI
 
             try
             {
-                var cm = ResolveConnectionManager();
-                if (cm == null)
+                if (!TryResolveSessionConnection(out var session))
                 {
                     _sessionFlow?.SetStatus(UiCopy.ConnectionManagerMissing, true);
                     SetMenuInteractable(true);
@@ -535,8 +435,8 @@ namespace FusionMultiplayer.UI
                     room = "Room1";
 
                 var ok = create
-                    ? await cm.CreateSessionAsync(room)
-                    : await cm.JoinSessionAsync(room);
+                    ? await session.CreateSessionAsync(room)
+                    : await session.JoinSessionAsync(room);
 
                 if (!ok)
                     SetMenuInteractable(true);
@@ -553,22 +453,15 @@ namespace FusionMultiplayer.UI
             }
         }
 
-        private static bool TryResolveConnectionManager(out ConnectionManager cm)
+        private static bool TryResolveSessionConnection(out ISessionConnection session)
         {
-            cm = ResolveConnectionManager();
-            return cm != null;
-        }
-
-        private static ConnectionManager ResolveConnectionManager()
-        {
-            if (ConnectionManager.Instance != null)
-                return ConnectionManager.Instance;
+            session = ConnectionManager.Instance;
+            if (session != null)
+                return true;
 
             var found = FindFirstObjectByType<ConnectionManager>();
-            if (found != null)
-                return found;
-
-            return null;
+            session = found;
+            return found != null;
         }
 
         private void SetMenuInteractable(bool interactable)

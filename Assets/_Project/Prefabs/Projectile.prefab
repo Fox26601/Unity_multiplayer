@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 7100000000000000005}
   - component: {fileID: 7100000000000000006}
   - component: {fileID: 7100000000000000008}
+  - component: {fileID: 2957631792849281120}
   m_Layer: 0
   m_Name: Projectile
   m_TagString: Untagged
@@ -54,6 +55,7 @@ MonoBehaviour:
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 7100000000000000008}
+  - {fileID: 2957631792849281120}
   ForceRemoteRenderTimeframe: 0
 --- !u!54 &7100000000000000005
 Rigidbody:
@@ -115,6 +117,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a9b0c1d2e3f445a6b7c8d9e0f1a2b3c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Player.Projectile
+--- !u!114 &2957631792849281120
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7100000000000000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
 --- !u!1 &7100000000000000010
 GameObject:
   m_ObjectHideFlags: 0

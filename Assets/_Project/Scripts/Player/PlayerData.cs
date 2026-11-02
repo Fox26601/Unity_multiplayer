@@ -6,7 +6,7 @@ using UnityEngine;
 namespace FusionMultiplayer.Player
 {
     /// <summary>
-    /// Per-player lobby/session profile replicated from the server.
+    /// Per-player lobby/session profile (Shared Mode: owning player SA+IA).
     /// </summary>
     public class PlayerData : NetworkBehaviour
     {
@@ -40,6 +40,11 @@ namespace FusionMultiplayer.Player
                     Tint = Color.white;
                 }
             }
+            else if (Object.InputAuthority == Runner.LocalPlayer)
+            {
+                // Shared reconnect: reclaim SA after master AssignInputAuthority.
+                Object.RequestStateAuthority();
+            }
 
             PlayerRegistry.RegisterPlayerData(this);
 
@@ -56,8 +61,25 @@ namespace FusionMultiplayer.Player
             base.Despawned(runner, hasState);
         }
 
+        private bool _configSubmitted;
+        private bool _needsProfileRefresh;
+
         public override void FixedUpdateNetwork()
         {
+            if (!HasStateAuthority && Object != null && Object.IsValid &&
+                Object.InputAuthority == Runner.LocalPlayer)
+            {
+                Object.RequestStateAuthority();
+            }
+
+            if (_needsProfileRefresh && Object != null && Object.IsValid &&
+                Object.InputAuthority == Runner.LocalPlayer)
+            {
+                _needsProfileRefresh = false;
+                var token = SessionData.EnsureReconnectToken();
+                RpcSubmitProfile(SessionData.Nickname ?? "Player", SessionData.Tint, token);
+            }
+
             if (!HasInputAuthority || GameManager.Instance == null || !GameManager.Instance.IsNetworkActive)
                 return;
 
@@ -67,8 +89,6 @@ namespace FusionMultiplayer.Player
             _configSubmitted = true;
             SubmitMatchConfig();
         }
-
-        private bool _configSubmitted;
 
         private void SubmitMatchConfig()
         {
@@ -88,9 +108,17 @@ namespace FusionMultiplayer.Player
                 return;
 
             var requested = string.IsNullOrWhiteSpace(nick.ToString()) ? "Player" : nick.ToString().Trim();
-            var player = Object.InputAuthority;
+            if (requested.StartsWith("BOT "))
+                requested = requested.Substring(4).Trim();
+            if (string.IsNullOrWhiteSpace(requested))
+                requested = "Player";
 
-            if (IsNicknameTakenByOther(requested, player))
+            var player = Object.InputAuthority;
+            var submittedToken = token.ToString().Trim();
+            // Same-token seat reclaim: never treat this seat's nick as a conflict.
+            var excludeToken = string.IsNullOrWhiteSpace(submittedToken) ? null : submittedToken;
+
+            if (IsNicknameTakenByOther(requested, player, excludeToken))
             {
                 Debug.LogWarning(
                     $"[FusionMultiplayer] Rejected nickname \"{requested}\" for player {player.PlayerId} — already taken.");
@@ -105,9 +133,84 @@ namespace FusionMultiplayer.Player
             IsBotControlled = false;
             PlayerRegistry.RegisterPlayerData(this);
             PlayerRegistry.NotifyReconnectTokenChanged(this);
+            // Reclaim is master provision / ReconnectService.FlushPending — not from a fresh spawn.
+        }
 
-            if (GameManager.Instance != null)
-                ReconnectService.RestorePlayer(Object.Runner, player, token.ToString());
+        /// <summary>
+        /// Master finished AssignInputAuthority; tell the reclaiming client to take SA and refresh profile.
+        /// </summary>
+        public void NotifyClientReclaimAuthority()
+        {
+            if (Object == null || !Object.IsValid)
+                return;
+
+            var player = Object.InputAuthority;
+            if (player == PlayerRef.None)
+                return;
+
+            if (Runner != null && Runner.LocalPlayer == player)
+            {
+                ApplyLocalReclaimAuthority();
+                return;
+            }
+
+            if (HasStateAuthority)
+                RPC_RequestReclaimAuthority(player);
+        }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        private void RPC_RequestReclaimAuthority([RpcTarget] PlayerRef target)
+        {
+            if (Runner == null || Runner.LocalPlayer != target)
+                return;
+
+            ApplyLocalReclaimAuthority();
+        }
+
+        private void ApplyLocalReclaimAuthority()
+        {
+            if (Object == null || !Object.IsValid)
+                return;
+
+            if (!HasStateAuthority)
+                Object.RequestStateAuthority();
+
+            var avatar = PlayerOwnership.FindAvatar(Object.InputAuthority) ??
+                         PlayerOwnership.FindAvatarBySlot(CharacterIndex);
+            if (avatar != null && avatar.Object != null && avatar.Object.IsValid && !avatar.HasStateAuthority)
+                avatar.Object.RequestStateAuthority();
+
+            _needsProfileRefresh = true;
+            if (Object.InputAuthority == Runner.LocalPlayer)
+            {
+                _needsProfileRefresh = false;
+                var token = SessionData.EnsureReconnectToken();
+                RpcSubmitProfile(SessionData.Nickname ?? "Player", SessionData.Tint, token);
+            }
+        }
+
+        /// <summary>SA owner despawns a duplicate empty PlayerData left by a bad reconnect spawn.</summary>
+        public void RequestDespawnAsDuplicate()
+        {
+            if (Object == null || !Object.IsValid || Runner == null)
+                return;
+
+            if (HasStateAuthority)
+            {
+                Runner.Despawn(Object);
+                return;
+            }
+
+            RPC_DespawnAsDuplicate();
+        }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_DespawnAsDuplicate()
+        {
+            if (!HasStateAuthority || Object == null || !Object.IsValid || Runner == null)
+                return;
+
+            Runner.Despawn(Object);
         }
 
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -120,8 +223,8 @@ namespace FusionMultiplayer.Player
         }
 
         /// <summary>Nickname must be unique among active human players in the room.</summary>
-        private static bool IsNicknameTakenByOther(string requested, PlayerRef self) =>
-            PlayerRegistry.IsNicknameTakenByOther(requested, self);
+        private static bool IsNicknameTakenByOther(string requested, PlayerRef self, string excludeToken = null) =>
+            PlayerRegistry.IsNicknameTakenByOther(requested, self, excludeToken);
 
         [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
         public void RpcRequestStartMatch()
@@ -176,7 +279,12 @@ namespace FusionMultiplayer.Player
             Deaths = 0;
             CharacterIndex = -1;
             EndGameVote = NoEndGameVote;
+            IsBotControlled = false;
+            var nick = Nick.ToString();
+            if (nick.StartsWith("BOT "))
+                Nick = nick.Substring(4);
             PlayerRegistry.NotifyCharacterIndexChanged(this);
+            PlayerRegistry.NotifyReconnectTokenChanged(this);
         }
 
         /// <summary>StateAuthority-only clear of end-game vote.</summary>

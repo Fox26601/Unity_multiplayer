@@ -21,9 +21,10 @@ Quick path from clone to a playable **single-editor Play** session.
 ## 3. Fusion Hub / Network Project Config
 
 1. **Fusion → Network Project Config**
-2. **Assemblies To Weave:** include `FusionMultiplayer.Runtime` → **Apply**
+2. **Fusion → Network Project Config → Assemblies To Weave**: include **`FusionMultiplayer.Runtime`** (and confirm **`FusionMultiplayer.UI`** is not woven) → **Apply**.
 3. **Network prefabs:** register `PlayerData`, `PlayerAvatar`, `PlacedBlock`, `Projectile`, `PhysicsProp` from `Assets/_Project/Prefabs/`
-4. **Peer Mode:** Client-Server (Host / Client / Dedicated Server), not Shared Mode. Confirm tick/send rates match the shipped `NetworkProjectConfig.fusion` → **Apply** if changed.
+4. Confirm tick/send rates match the shipped `NetworkProjectConfig.fusion` → **Apply** if changed.
+5. Runtime sessions use **Shared Mode** (`GameMode.Shared`).
 
 ## 4. Editor play settings
 
@@ -40,10 +41,10 @@ Fix any errors before testing.
 ## 6. Single Play test (release minimum)
 
 1. Press **Play** (starts `00_MainMenu`)
-2. Enter nickname + room name → **Create / Host room**
+2. Enter nickname + room name → **Create room**
 3. Status shows **Connecting…** → lobby with **LOBBY** title and player list
-4. **START GAME** (host/server loads the map; clients may request start via RPC) → game scene
-5. Pick character slot → WASD move, E/Q blocks, chat
+4. **START GAME** (Shared master loads the map; clients may request start via RPC) → game scene
+5. Pick character slot → WASD move, E/Q blocks, LMB shoot (smooth projectiles), chat
 6. **End game** → **Leave to main menu** (cursor must unlock; Main Menu buttons clickable)
 
 Console should have **no red errors** and **no `[Fusion] Invalid TickRate`**.

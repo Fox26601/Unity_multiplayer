@@ -1,8 +1,9 @@
+using FusionMultiplayer.Data;
 using UnityEngine;
 
 namespace FusionMultiplayer.Environment
 {
-    /// <summary>Loads environment piece prefabs from Resources/Environment.</summary>
+    /// <summary>Loads environment piece prefabs from catalog or Resources/Environment.</summary>
     public static class EnvironmentPrefabRegistry
     {
         private const string CubeResource = "Environment/EnvPiece_Cube";
@@ -13,12 +14,24 @@ namespace FusionMultiplayer.Environment
         private static GameObject _cylinder;
         private static GameObject _ground;
 
-        public static GameObject Cube => _cube ??= Load(CubeResource);
-        public static GameObject Cylinder => _cylinder ??= Load(CylinderResource);
-        public static GameObject Ground => _ground ??= Load(GroundResource);
+        public static GameObject Cube =>
+            Resolve(ref _cube, GameConfigs.EnsureCurrent()?.Prefabs?.EnvCube, CubeResource);
+
+        public static GameObject Cylinder =>
+            Resolve(ref _cylinder, GameConfigs.EnsureCurrent()?.Prefabs?.EnvCylinder, CylinderResource);
+
+        public static GameObject Ground =>
+            Resolve(ref _ground, GameConfigs.EnsureCurrent()?.Prefabs?.EnvGround, GroundResource);
 
         public static bool HasAllPrefabs =>
             Cube != null && Cylinder != null && Ground != null;
+
+        private static GameObject Resolve(ref GameObject cache, GameObject catalogPrefab, string resourcePath)
+        {
+            if (catalogPrefab != null)
+                return catalogPrefab;
+            return cache ??= Load(resourcePath);
+        }
 
         private static GameObject Load(string path)
         {

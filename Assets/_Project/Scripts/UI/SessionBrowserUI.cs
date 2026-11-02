@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Fusion;
 using FusionMultiplayer.Core;
+using FusionMultiplayer.Session;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -213,8 +214,8 @@ namespace FusionMultiplayer.UI
                 Time.unscaledTime >= _mapFilterDeadline)
             {
                 _mapFilterExpired = true;
-                RebuildList(ConnectionManager.Instance != null
-                    ? ConnectionManager.Instance.CachedSessionList
+                RebuildList(ResolveBrowser() != null
+                    ? ResolveBrowser().CachedSessionList
                     : Array.Empty<SessionInfo>());
             }
 
@@ -236,8 +237,8 @@ namespace FusionMultiplayer.UI
             _createDifficultySelector?.SetOptions(GetDifficultyLabels(), index);
             _joinDifficultySelector?.SetOptions(GetDifficultyLabels(), index);
             if (_joinPageActive)
-                RebuildList(ConnectionManager.Instance != null
-                    ? ConnectionManager.Instance.CachedSessionList
+                RebuildList(ResolveBrowser() != null
+                    ? ResolveBrowser().CachedSessionList
                     : Array.Empty<SessionInfo>());
         }
 
@@ -270,8 +271,8 @@ namespace FusionMultiplayer.UI
         {
             ApplyMapSelection(index);
             SyncMapSelectors(index);
-            RebuildList(ConnectionManager.Instance != null
-                ? ConnectionManager.Instance.CachedSessionList
+            RebuildList(ResolveBrowser() != null
+                ? ResolveBrowser().CachedSessionList
                 : Array.Empty<SessionInfo>());
         }
 
@@ -350,7 +351,7 @@ namespace FusionMultiplayer.UI
             if (!_joinPageActive || _refreshInFlight)
                 return;
 
-            if (ConnectionManager.Instance == null)
+            if (ResolveBrowser() == null)
             {
                 SetEmptyHint(UiCopy.SessionBrowserNoConnection);
                 RebuildList(Array.Empty<SessionInfo>());
@@ -368,7 +369,8 @@ namespace FusionMultiplayer.UI
             SetEmptyHint(UiCopy.SessionBrowserLoading);
             try
             {
-                var ok = await ConnectionManager.Instance.EnsureSessionLobbyAsync(SessionData.SelectedGameMode);
+                var browser = ResolveBrowser();
+                var ok = await browser.EnsureSessionLobbyAsync(SessionData.SelectedGameMode);
                 if (!_joinPageActive)
                     return;
 
@@ -379,7 +381,7 @@ namespace FusionMultiplayer.UI
                     return;
                 }
 
-                RebuildList(ConnectionManager.Instance.CachedSessionList);
+                RebuildList(browser.CachedSessionList);
             }
             finally
             {
@@ -582,5 +584,7 @@ namespace FusionMultiplayer.UI
             if (SessionData.SelectedMap != SessionCatalog.MapKind.Any)
                 _modeHint.text += " · " + SessionCatalog.GetMapDescription(SessionData.SelectedMap);
         }
+
+        private static ISessionBrowser ResolveBrowser() => ConnectionManager.Instance;
     }
 }

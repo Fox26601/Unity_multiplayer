@@ -269,9 +269,9 @@
       <h2>What’s inside</h2>
       <div class="grid">
         <div class="card"><h3>Engine</h3><p>Unity 6000.3 · New Input System · UGUI / TMP</p></div>
-        <div class="card"><h3>Network</h3><p>Photon Fusion 2 · Host / Client / Dedicated Server</p></div>
-        <div class="card"><h3>Authority</h3><p>StateAuthority on server · InputAuthority on player</p></div>
-        <div class="card"><h3>Not Shared Mode</h3><p>Host migration unused (waived for dedicated topology)</p></div>
+        <div class="card"><h3>Network</h3><p>Photon Fusion 2 · Shared Mode (create / join)</p></div>
+        <div class="card"><h3>Authority</h3><p>Master owns match services · players own avatars / shots</p></div>
+        <div class="card"><h3>Master migration</h3><p>#6 Done — client can become Shared Mode master</p></div>
       </div>
     </section>
 
@@ -287,7 +287,7 @@
       </div>
       <ul class="list" style="margin-top:1.4rem">
         <li>Create / Join / Quick Join / Reconnect from Main Menu</li>
-        <li>START loads the map via <strong>Runner.LoadScene</strong> on the server</li>
+        <li>START loads the map via <strong>Runner.LoadScene</strong> on the Shared master</li>
         <li>Leave → shutdown runner → return to Main Menu</li>
       </ul>
     </section>
@@ -334,9 +334,9 @@
       <p class="kicker">Bonus highlights</p>
       <h2>Claimed beyond mandatory</h2>
       <div class="grid">
-        <div class="card"><h3>+15 Reconnect</h3><p>ConnectionToken → restore InputAuthority, deactivate bot.</p></div>
-        <div class="card"><h3>+15 Bot takeover</h3><p>After disconnect the avatar stays; AI runs in FixedUpdateNetwork.</p></div>
-        <div class="card"><h3>+55 Dedicated</h3><p><code>-dedicated -room=Name</code>, GameMode.Server.</p></div>
+        <div class="card"><h3>+15 Reconnect</h3><p>ConnectionToken → restore InputAuthority / RequestStateAuthority, deactivate bot.</p></div>
+        <div class="card"><h3>+15 Bot takeover</h3><p>After disconnect the avatar stays; AI runs on Shared master.</p></div>
+        <div class="card"><h3>+4 NetworkTransform shots</h3><p>Projectile TRSP · shooter StateAuthority · smooth proxies.</p></div>
         <div class="card"><h3>+8 DB · +5 NRB</h3><p>Local JSON career stats · custom NetworkRigidbody3D.</p></div>
       </div>
       <p class="note" style="margin-top:0.8rem">NetworkMecanimAnimator is <strong>not claimed</strong> (deferred).</p>
@@ -348,24 +348,24 @@
       <div class="two">
         <ul class="list">
           <li><strong>Force-quit</strong> keeps the token → Reconnect button</li>
-          <li>Room soft-lock: <code>phase=Started</code>, <code>IsOpen=true</code></li>
-          <li>Unknown join after START is refused</li>
-          <li>Known token reclaims avatar / slot / score</li>
+          <li>Match start <strong>hard-closes</strong> the room (<code>phase=Started</code>, <code>IsOpen=false</code>)</li>
+          <li>Disconnect opens a short reconnect window (<code>IsOpen=true</code> + <code>reUntil</code>) for known tokens only</li>
+          <li>Unknown join after START is refused; known token reclaims avatar / slot / score</li>
         </ul>
-        <div class="note">Closing the Photon room would hit GameClosed (32764) before our OnConnectRequest can accept the token.</div>
+        <div class="note">Hard-close satisfies Google Doc #13; the timed window is bonus crash-reconnect without leaving the room permanently open.</div>
       </div>
     </section>
 
     <section class="slide">
-      <p class="kicker">Dedicated</p>
-      <h2>Server process</h2>
+      <p class="kicker">Shared Mode</p>
+      <h2>Master + player authority</h2>
       <ul class="list">
-        <li>Launch: <code>… -batchmode -nographics -dedicated -room=Ded1</code></li>
-        <li>Clients Join → START (RPC) → server loads the map</li>
-        <li>Server is the sole StateAuthority</li>
-        <li>Client disconnect → bot; Reconnect restores control</li>
+        <li>Create / Join → <code>GameMode.Shared</code> (offline: <code>Single</code>)</li>
+        <li>Master owns GameManager / chat / session lock</li>
+        <li>Each player owns PlayerData + avatar (SA+IA); projectiles use shooter SA + NetworkTransform</li>
+        <li>Master leave → migration; match timer / slots / votes survive</li>
       </ul>
-      <p class="lead" style="margin-top:1rem">Editor local testing: Host create + Client join.</p>
+      <p class="lead" style="margin-top:1rem">MPPM: all peers are Shared clients; one is master.</p>
     </section>
 
     <section class="slide">
@@ -375,17 +375,36 @@
         <li><strong>1.</strong> Boot → Create room (max ≥3)</li>
         <li><strong>2.</strong> Second client Join → Lobby → START</li>
         <li><strong>3.</strong> Different slots → shoot / chat / Tab</li>
-        <li><strong>4.</strong> Force-quit → BOT → Reconnect</li>
+        <li><strong>4.</strong> Force-quit → BOT → Reconnect; optional: quit master → migration</li>
         <li><strong>5.</strong> End / vote → Leave → Leaderboard</li>
       </ul>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Structure</p>
+      <h2>Project &amp; code layout</h2>
+      <div class="two">
+        <ul class="list">
+          <li><strong>Session/</strong> ConnectionManager, lobby, session data</li>
+          <li><strong>Match/</strong> GameManager (partials), votes, combat rules</li>
+          <li><strong>UI/</strong> screen controllers · <strong>UI/Build/</strong> layout tools</li>
+          <li><strong>Reconnect/</strong> probe policy + master restore</li>
+          <li>Assemblies: <code>Runtime</code> (gameplay) + <code>UI</code> + <code>Editor</code></li>
+        </ul>
+        <ul class="list">
+          <li>Layers: UI → Session → Match → Gameplay</li>
+          <li><code>ConnectionManager</code> partials: lobby, start, lifecycle, callbacks</li>
+          <li>Details: <strong>Docs/ARCHITECTURE.md</strong></li>
+        </ul>
+      </div>
     </section>
 
     <section class="slide">
       <p class="kicker">Q&amp;A</p>
       <h2>Short answers</h2>
       <div class="grid">
-        <div class="card"><h3>Why no NT on Projectile?</h3><p>Custom server tick pose; NetworkTransform fought interpolation.</p></div>
-        <div class="card"><h3>Why not close the room?</h3><p>Soft-lock keeps reconnect possible without GameClosed.</p></div>
+        <div class="card"><h3>Projectile sync?</h3><p>Shooter SA + <code>NetworkTransform</code> (TRSP) on the projectile prefab.</p></div>
+        <div class="card"><h3>Close room vs reconnect?</h3><p>Hard-close on START; brief reconnect window only for known tokens.</p></div>
         <div class="card"><h3>Join vs Reconnect?</h3><p>After START, use Reconnect with the same token.</p></div>
         <div class="card"><h3>Custom NRB?</h3><p>Our <code>Networking.NetworkRigidbody3D</code>, not the Fusion Physics addon.</p></div>
       </div>
@@ -396,7 +415,7 @@
       <h1>Thank you</h1>
       <p class="lead">Happy to take questions and run a live session.</p>
       <div class="meta">
-        <span class="pill">docs: ASSIGNMENT · SETUP · TESTING · RELEASE</span>
+        <span class="pill">docs: ASSIGNMENT · ARCHITECTURE · SETUP · TESTING</span>
         <span class="pill">repo: Unity_multiplayer</span>
       </div>
     </section>

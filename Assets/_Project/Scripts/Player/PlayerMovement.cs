@@ -5,10 +5,10 @@ using UnityEngine;
 namespace FusionMultiplayer.Player
 {
     /// <summary>
-    /// Minecraft-style locomotion: WASD + Space jump (apex ~1.5 tiles). Bots drive the same motor via SetBotMove.
-    /// StateAuthority is authoritative; InputAuthority without SA runs the same motor as local prediction.
+    /// Minecraft-style locomotion via Fusion <see cref="NetworkCharacterController"/>.
+    /// Bots drive the same path through <see cref="SetBotMove"/>.
     /// </summary>
-    [RequireComponent(typeof(CharacterController))]
+    [RequireComponent(typeof(NetworkCharacterController))]
     [DefaultExecutionOrder(0)]
     public class PlayerMovement : NetworkBehaviour
     {
@@ -17,27 +17,32 @@ namespace FusionMultiplayer.Player
 
         [SerializeField] private float _moveSpeed = 4f;
 
-        private CharacterController _cc;
+        private NetworkCharacterController _ncc;
         private BotBrain _botBrain;
         private PlayerAvatar _avatar;
-        private float _verticalVelocity;
         private NetworkButtons _previousButtons;
 
         private void Awake()
         {
-            _cc = GetComponent<CharacterController>();
+            _ncc = GetComponent<NetworkCharacterController>();
             _botBrain = GetComponent<BotBrain>();
             _avatar = GetComponent<PlayerAvatar>();
         }
 
+        public override void Spawned()
+        {
+            if (_ncc == null)
+                _ncc = GetComponent<NetworkCharacterController>();
+            ApplyNccTuning();
+        }
+
         public override void FixedUpdateNetwork()
         {
-            if (_avatar != null && !_avatar.IsAlive)
-            {
-                if (HasStateAuthority || HasInputAuthority)
-                    _verticalVelocity = 0f;
+            if (_ncc == null)
                 return;
-            }
+
+            if (_avatar != null && !_avatar.IsAlive)
+                return;
 
             if (HasStateAuthority)
             {
@@ -54,7 +59,6 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            // Client prediction: same motor from local input (NT off while predicting).
             if (HasInputAuthority)
                 ApplyInputMotor();
         }
@@ -63,7 +67,7 @@ namespace FusionMultiplayer.Player
         {
             if (!GetInput(out GameplayNetworkInput input))
             {
-                ApplyMotor(Vector3.zero, false);
+                ApplyMove(Vector3.zero, false);
                 return;
             }
 
@@ -72,48 +76,55 @@ namespace FusionMultiplayer.Player
                 yaw = liveYaw;
 
             var basis = Quaternion.Euler(0f, yaw, 0f);
-            var horizontal = basis * Vector3.forward * (input.MoveForward * _moveSpeed)
-                             + basis * Vector3.right * (input.Strafe * _moveSpeed);
+            var direction = basis * Vector3.forward * input.MoveForward
+                            + basis * Vector3.right * input.Strafe;
             var wantJump = input.Buttons.WasPressed(_previousButtons, GameplayButton.Jump);
             _previousButtons = input.Buttons;
-            ApplyMotor(horizontal, wantJump);
+            ApplyMove(direction, wantJump);
         }
 
-        /// <summary>Bot locomotion entry: world-space horizontal velocity (m/s) + optional jump.</summary>
+        /// <summary>Bot locomotion: world-space horizontal intent + optional jump.</summary>
         public void SetBotMove(Vector3 horizontalWorldVelocity, bool wantJump)
         {
             if (!HasStateAuthority)
                 return;
 
-            ApplyMotor(horizontalWorldVelocity, wantJump);
+            ApplyMove(horizontalWorldVelocity, wantJump);
         }
 
-        public bool IsGrounded => _cc != null && _cc.enabled && _cc.isGrounded;
+        public bool IsGrounded => _ncc != null && _ncc.Grounded;
 
-        private void ApplyMotor(Vector3 horizontalWorldVelocity, bool wantJump)
+        private void ApplyMove(Vector3 horizontalIntent, bool wantJump)
         {
-            if (_cc == null || !_cc.enabled)
+            if (_ncc == null)
                 return;
 
-            var dt = Runner != null ? Runner.DeltaTime : Time.fixedDeltaTime;
-            var g = Mathf.Abs(Physics.gravity.y);
-            if (g < 0.01f)
-                g = 9.81f;
+            ApplyNccTuning();
 
-            if (_cc.isGrounded && _verticalVelocity < 0f)
-                _verticalVelocity = -2f;
+            var flat = horizontalIntent;
+            flat.y = 0f;
+            if (flat.sqrMagnitude > 0.0001f)
+                _ncc.Move(flat.normalized);
+            else
+                _ncc.Move(Vector3.zero);
 
-            if (wantJump && _cc.isGrounded)
-                _verticalVelocity = Mathf.Sqrt(2f * g * JumpApexHeight);
+            if (wantJump)
+            {
+                var impulse = Mathf.Sqrt(2f * Mathf.Abs(_ncc.gravity) * JumpApexHeight);
+                _ncc.Jump(overrideImpulse: impulse);
+            }
+        }
 
-            _verticalVelocity += Physics.gravity.y * dt;
+        private void ApplyNccTuning()
+        {
+            if (_ncc == null)
+                return;
 
-            var motion = horizontalWorldVelocity * dt;
-            motion.y = _verticalVelocity * dt;
-            _cc.Move(motion);
-
-            if (_cc.isGrounded && _verticalVelocity < 0f)
-                _verticalVelocity = -2f;
+            // Look owns body yaw (FPS); NCC must not rotate toward move direction.
+            _ncc.rotationSpeed = 0f;
+            _ncc.maxSpeed = _moveSpeed;
+            _ncc.acceleration = Mathf.Max(_ncc.acceleration, _moveSpeed * 8f);
+            _ncc.braking = Mathf.Max(_ncc.braking, _moveSpeed * 8f);
         }
     }
 }

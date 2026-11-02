@@ -19,6 +19,7 @@ namespace FusionMultiplayer.UI
         private Color _lastTint;
         private bool _lastLocalLocked;
         private bool _lastIsLocal;
+        private bool _lastIsBot;
         private bool _hasVisualCache;
 
         public int SlotIndex => _slotIndex;
@@ -39,14 +40,16 @@ namespace FusionMultiplayer.UI
         }
 
         public void RefreshVisual(PlayerRef owner, string ownerNick, Color ownerTint, bool localLocked,
-            bool isLocalPlayer)
+            bool isLocalPlayer, bool isBot = false)
         {
+            var occupied = owner != PlayerRef.None || isBot;
             if (_hasVisualCache &&
                 owner == _lastOwner &&
                 ownerNick == _lastNick &&
                 ownerTint == _lastTint &&
                 localLocked == _lastLocalLocked &&
-                isLocalPlayer == _lastIsLocal)
+                isLocalPlayer == _lastIsLocal &&
+                isBot == _lastIsBot)
                 return;
 
             _hasVisualCache = true;
@@ -55,26 +58,31 @@ namespace FusionMultiplayer.UI
             _lastTint = ownerTint;
             _lastLocalLocked = localLocked;
             _lastIsLocal = isLocalPlayer;
+            _lastIsBot = isBot;
 
             if (_numberLabel != null)
             {
                 _numberLabel.text = _slotIndex.ToString();
-                _numberLabel.color = owner == PlayerRef.None ? UiTheme.TitleAccent : UiTheme.TextSubtitle;
+                _numberLabel.color = occupied ? UiTheme.TextSubtitle : UiTheme.TitleAccent;
             }
 
             if (_ownerLabel != null)
             {
-                if (owner == PlayerRef.None)
+                if (!occupied)
                     _ownerLabel.text = UiCopy.CharacterSlotFree;
                 else if (isLocalPlayer)
                     _ownerLabel.text = "YOU";
+                else if (isBot)
+                    _ownerLabel.text = string.IsNullOrWhiteSpace(ownerNick)
+                        ? UiCopy.CharacterSlotBot
+                        : ownerNick;
                 else
                     _ownerLabel.text = string.IsNullOrWhiteSpace(ownerNick) ? "TAKEN" : ownerNick;
             }
 
             if (_background != null)
             {
-                if (owner == PlayerRef.None)
+                if (!occupied)
                 {
                     _background.color = UiTheme.ButtonBackground;
                 }

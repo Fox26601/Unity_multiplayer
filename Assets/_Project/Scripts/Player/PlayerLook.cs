@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace FusionMultiplayer.Player
 {
-    /// <summary>First-person mouse look: yaw on body (networked), pitch on PlayerCamera (local).</summary>
-    [DefaultExecutionOrder(-20)]
+    /// <summary>First-person mouse look: yaw on body (networked via NCC buffer), pitch on PlayerCamera (local).</summary>
+    [DefaultExecutionOrder(100)]
     public sealed class PlayerLook : NetworkBehaviour
     {
         [SerializeField] private float _sensitivity = 0.15f;

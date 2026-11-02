@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc9a176f832b447f39ec13920b9624f8, type: 3}
+  m_Name: Mode_Sandbox
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.GameModeDefinition
+  _kind: 2
+  _label: Sandbox
+  _description: Build, break other players' blocks (Q), and shoot (LMB).
+  _allowBuild: 1
+  _allowCombat: 1
+  _allowBreakOthers: 1

@@ -1,12 +1,11 @@
 using System.Collections;
-using FusionMultiplayer.UI;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace FusionMultiplayer.Core
 {
     /// <summary>
-    /// MPPM virtual players: wait for the main editor to host, then auto-join the same room.
+    /// MPPM virtual players: wait for the main editor to create a room, then auto-join.
     /// </summary>
     public sealed class MppmAutoJoin : MonoBehaviour
     {
@@ -88,8 +87,7 @@ namespace FusionMultiplayer.Core
 
                 if (MppmSessionBridge.TryReadRoom(out var room))
                 {
-                    var flow = Object.FindFirstObjectByType<SessionFlowUI>();
-                    flow?.SetStatus($"MPPM auto-joining room \"{room}\"...", false);
+                    SessionStatusOverlay.Set($"MPPM auto-joining room \"{room}\"...", false);
 
                     var task = cm.JoinSessionAsync(room);
                     while (!task.IsCompleted)
@@ -102,9 +100,9 @@ namespace FusionMultiplayer.Core
                         yield break;
                     }
 
-                    // Join can fail with GameClosed after the host started the match — keep polling
-                    // for a new Create / Host (bridge file must stay owned by the main editor).
-                    flow?.SetStatus(
+                    // Join can fail with GameClosed after the master started the match — keep polling
+                    // for a new Create room (bridge file must stay owned by the main editor).
+                    SessionStatusOverlay.Set(
                         "MPPM auto-join failed (room closed or started). Waiting for a new lobby…", true);
                     yield return new WaitForSecondsRealtime(2f);
                     elapsed += 2f;
@@ -116,8 +114,8 @@ namespace FusionMultiplayer.Core
             }
 
             Debug.LogWarning(
-                "[FusionMultiplayer] MPPM clone timed out waiting for the main editor to host a room. " +
-                "On Player 1: open 00_MainMenu, enter room name, click Create / Host.");
+                "[FusionMultiplayer] MPPM clone timed out waiting for the main editor to create a room. " +
+                "On Player 1: open 00_MainMenu, enter room name, click Create room.");
         }
 #endif
     }

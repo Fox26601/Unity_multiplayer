@@ -14,7 +14,7 @@ namespace FusionMultiplayer.UI
     {
         public static bool IsOpen { get; private set; }
 
-        private const int PauseBuildVersion = 2;
+        private const int PauseBuildVersion = 3;
 
         private GameObject _overlay;
         private bool _built;
@@ -54,7 +54,7 @@ namespace FusionMultiplayer.UI
             var version = _overlay.AddComponent<PauseOverlayVersion>();
             version.Version = PauseBuildVersion;
 
-            var panel = UiRuntimeBuildKit.CreateCenteredPanel(_overlay.transform, "Panel", new Vector2(520f, 420f));
+            var panel = UiRuntimeBuildKit.CreateCenteredPanel(_overlay.transform, "Panel", new Vector2(520f, 480f));
             var vlg = panel.AddComponent<VerticalLayoutGroup>();
             vlg.padding = new RectOffset(28, 28, 24, 24);
             vlg.spacing = 14f;
@@ -70,6 +70,10 @@ namespace FusionMultiplayer.UI
 
             var resume = CreateLayoutButton(panel.transform, "BtnResume", UiCopy.PauseResume);
             resume.onClick.AddListener(Close);
+
+            var changeChar = CreateLayoutButton(panel.transform, "BtnChangeCharacter",
+                UiCopy.PauseChangeCharacter);
+            changeChar.onClick.AddListener(OnChangeCharacter);
 
             var leave = CreateLayoutButton(panel.transform, "BtnLeave", UiCopy.PauseLeave);
             leave.onClick.AddListener(() => _ = LeaveAsync());
@@ -172,9 +176,25 @@ namespace FusionMultiplayer.UI
 
         private void Close() => SetOpen(false);
 
+        private void OnChangeCharacter()
+        {
+            // Close pause without CancelReselect — BeginReselect owns the next UI state.
+            IsOpen = false;
+            GameplayInputMode.PauseBlockingGameplay = false;
+            if (_overlay != null)
+                _overlay.SetActive(false);
+
+            GameplayInputMode.SetMenu();
+            var select = Object.FindFirstObjectByType<CharacterSelectUI>();
+            if (select != null)
+                select.BeginReselect();
+        }
+
         private void SetOpen(bool open)
         {
+            var wasOpen = IsOpen;
             IsOpen = open;
+            GameplayInputMode.PauseBlockingGameplay = open;
             if (_overlay != null)
                 _overlay.SetActive(open);
 
@@ -182,6 +202,14 @@ namespace FusionMultiplayer.UI
             {
                 GameplayInputMode.SetMenu();
                 return;
+            }
+
+            // Resume / Esc closing pause aborts an unfinished Change-character flow.
+            if (wasOpen)
+            {
+                var select = Object.FindFirstObjectByType<CharacterSelectUI>();
+                if (select != null && select.IsReselectActive)
+                    select.CancelReselect();
             }
 
             if (!GameplayInputMode.ChatBlockingGameplay && IsInGameScene() && !IsGameOverVisible() &&
@@ -199,6 +227,7 @@ namespace FusionMultiplayer.UI
             try
             {
                 IsOpen = false;
+                GameplayInputMode.PauseBlockingGameplay = false;
                 if (_overlay != null)
                     _overlay.SetActive(false);
                 GameplayInputMode.ChatBlockingGameplay = false;

@@ -57,7 +57,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
   SortKey: 1579632557
   ObjectInterest: 1
-  Flags: 262145
+  Flags: 524289
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 7849877300956637418}
@@ -76,14 +76,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 845186577642277457}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Script: {fileID: 11500000, guid: 378411a89480da345945c2f888327a2d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
-  _stateAuthorityChangeErrorCorrectionDelta: 0
-  SyncScale: 0
-  SyncParent: 0
-  _autoAOIOverride: 1
-  DisableSharedModeInterpolation: 0
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkCharacterController
+  gravity: -20
+  jumpImpulse: 7.75
+  acceleration: 32
+  braking: 32
+  maxSpeed: 4
+  rotationSpeed: 0
 --- !u!143 &4224682080754882018
 CharacterController:
   m_ObjectHideFlags: 0

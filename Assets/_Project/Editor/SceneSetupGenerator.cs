@@ -95,7 +95,8 @@ namespace FusionMultiplayer.EditorTools
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("Fusion Multiplayer: scenes and prefabs generated. Register prefabs in Fusion NetworkProjectConfig.");
+            GameConfigsGenerator.CreateDefaultConfigAssets();
+            Debug.Log("Fusion Multiplayer: scenes, prefabs, and default configs generated. Register prefabs in Fusion NetworkProjectConfig.");
         }
 
         [MenuItem("Tools/Fusion Multiplayer/Generate Environment Prefabs")]
@@ -195,7 +196,7 @@ namespace FusionMultiplayer.EditorTools
         {
             var go = new GameObject("Projectile");
             go.AddComponent<NetworkObject>();
-            // No NetworkTransform — Projectile drives pose via [Networked] fields (see Projectile.cs).
+            go.AddComponent<NetworkTransform>();
             var rb = go.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
@@ -273,11 +274,16 @@ namespace FusionMultiplayer.EditorTools
         {
             var go = new GameObject("PlayerAvatar");
             go.AddComponent<NetworkObject>();
-            go.AddComponent<NetworkTransform>();
             var cc = go.AddComponent<CharacterController>();
             cc.height = 1.8f;
             cc.radius = 0.35f;
             cc.center = new Vector3(0f, 0.9f, 0f);
+            var ncc = go.AddComponent<NetworkCharacterController>();
+            ncc.maxSpeed = 4f;
+            ncc.acceleration = 32f;
+            ncc.braking = 32f;
+            ncc.rotationSpeed = 0f;
+            ncc.jumpImpulse = 7.75f;
             go.AddComponent<PlayerAvatar>();
             go.AddComponent<PlayerMovement>();
             go.AddComponent<PlayerLook>();

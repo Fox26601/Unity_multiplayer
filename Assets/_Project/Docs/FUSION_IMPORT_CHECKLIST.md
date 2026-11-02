@@ -22,7 +22,7 @@ Complete these steps **in order** inside the Unity Editor on this machine.
 
 ## 4. Assemblies to weave (automated + manual confirm)
 
-This repo includes an editor utility [`Assets/Editor/FusionNetworkConfigWeaverPatcher.cs`](../../Editor/FusionNetworkConfigWeaverPatcher.cs) that injects **`FusionMultiplayer.Runtime`** into `NetworkProjectConfig.fusion` when that file appears.
+This repo includes an editor utility [`Assets/_Project/Editor/FusionNetworkConfigWeaverPatcher.cs`](../Editor/FusionNetworkConfigWeaverPatcher.cs) that injects **`FusionMultiplayer.Runtime`** into `NetworkProjectConfig.fusion` when that file appears.
 
 1. After Fusion import, check the Console for:  
    `Injected 'FusionMultiplayer.Runtime' into NetworkProjectConfig AssembliesToWeave`

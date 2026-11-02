@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb39cbd14bb804bf8b58cc70c94998b0, type: 3}
+  m_Name: Map_Ruins
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.MapDefinition
+  _kind: 2
+  _label: Ruins
+  _description: Broken walls, rubble, and elevated platforms.
+  _spawnPositions:
+  - {x: 2.2574263, y: 0, z: 12.802501}
+  - {x: 10.604629, y: 0, z: 9.888976}
+  - {x: 15.912351, y: 0, z: 1.6724547}
+  - {x: 11.143175, y: 0, z: -6.695494}
+  - {x: 5.431797, y: 0, z: -13.444165}
+  - {x: -4.141105, y: 0, z: -15.454813}
+  - {x: -10.24414, y: 0, z: -8.003599}
+  - {x: -14.497792, y: 0, z: -0.25305828}
+  - {x: -12.944274, y: 0, z: 9.404561}
+  - {x: -3.8008327, y: 0, z: 12.431961}
+  _spawnYaws:
+  - -170
+  - -133
+  - -96
+  - -59
+  - -22.000008
+  - 15.000002
+  - 52
+  - 89.00001
+  - 125.999985
+  - 163

@@ -1,17 +1,29 @@
 using Fusion;
 using FusionMultiplayer.Core;
+using FusionMultiplayer.Data;
 using UnityEngine;
 
 namespace FusionMultiplayer.Player
 {
     /// <summary>
     /// Networked player body with visuals driven by replicated tint/name.
+    /// Locomotion uses <see cref="NetworkCharacterController"/> (Fusion TRSP).
     /// </summary>
-    [RequireComponent(typeof(NetworkTransform))]
+    [RequireComponent(typeof(NetworkCharacterController))]
     public class PlayerAvatar : NetworkBehaviour
     {
         public const float DefaultMaxHealth = 100f;
         public const float RespawnDelaySeconds = 3f;
+
+        public static float ActiveMaxHealth =>
+            GameConfigs.EnsureCurrent()?.PlayerStats != null
+                ? GameConfigs.Current.PlayerStats.MaxHealth
+                : DefaultMaxHealth;
+
+        public static float ActiveRespawnDelaySeconds =>
+            GameConfigs.EnsureCurrent()?.PlayerStats != null
+                ? GameConfigs.Current.PlayerStats.RespawnDelaySeconds
+                : RespawnDelaySeconds;
         private const float MaxHitDistance = 40f;
 
         [Networked] public int CharacterSlot { get; set; }
@@ -37,10 +49,11 @@ namespace FusionMultiplayer.Player
         private Renderer[] _visualRenderers;
         private Collider[] _hitColliders;
         private CharacterController _characterController;
-        private NetworkTransform _networkTransform;
+        private NetworkCharacterController _networkCharacterController;
         private bool _corpseVisible = true;
         private MaterialPropertyBlock _mpb;
         private string _lastNameTag;
+        private bool _releaseWhenHasAuthority;
 
         public bool IsAlive => !IsDead && Health > 0f;
 
@@ -52,7 +65,7 @@ namespace FusionMultiplayer.Player
         private void CacheCorpseParts()
         {
             _characterController = GetComponent<CharacterController>();
-            _networkTransform = GetComponent<NetworkTransform>();
+            _networkCharacterController = GetComponent<NetworkCharacterController>();
             _hitColliders = GetComponentsInChildren<Collider>(true);
             _visualRenderers = GetComponentsInChildren<Renderer>(true);
             if (_nameTag == null)
@@ -66,13 +79,15 @@ namespace FusionMultiplayer.Player
 
             if (HasStateAuthority)
             {
-                MaxHealth = DefaultMaxHealth;
+                MaxHealth = ActiveMaxHealth;
                 Health = MaxHealth;
                 IsDead = false;
                 PushFromLocalPlayerData();
             }
-
-            RefreshNetworkTransformForAuthority();
+            else if (Object.InputAuthority == Runner.LocalPlayer)
+            {
+                Object.RequestStateAuthority();
+            }
 
             var camTr = transform.Find("PlayerCamera");
             if (camTr != null)
@@ -108,21 +123,20 @@ namespace FusionMultiplayer.Player
             PlayerRegistry.RegisterAvatar(this);
         }
 
-        /// <summary>Local predicted clients skip NT so CC does not fight interpolated pose.</summary>
-        private void RefreshNetworkTransformForAuthority()
-        {
-            if (_networkTransform == null)
-                _networkTransform = GetComponent<NetworkTransform>();
-            if (_networkTransform == null)
-                return;
-
-            var predictLocally = HasInputAuthority && !HasStateAuthority;
-            _networkTransform.enabled = !predictLocally;
-        }
-
         public override void FixedUpdateNetwork()
         {
-            RefreshNetworkTransformForAuthority();
+            if (!HasStateAuthority && Object != null && Object.IsValid &&
+                Object.InputAuthority == Runner.LocalPlayer)
+            {
+                Object.RequestStateAuthority();
+            }
+
+            if (_releaseWhenHasAuthority && HasStateAuthority)
+            {
+                _releaseWhenHasAuthority = false;
+                ReleaseBodyLocal();
+                return;
+            }
 
             if (HasStateAuthority)
             {
@@ -133,10 +147,27 @@ namespace FusionMultiplayer.Player
             }
         }
 
-        /// <summary>Server-only hit application (projectile / weapon StateAuthority).</summary>
-        public void ApplyServerHit(float damage, PlayerRef attacker, Vector3 hitOrigin)
+        /// <summary>
+        /// Shooter asks Shared master to validate + roll damage; victim SA applies rolled amount.
+        /// </summary>
+        public void RequestHit(float damage, PlayerRef attacker, Vector3 hitOrigin)
         {
-            if (!HasStateAuthority || damage <= 0f || IsDead)
+            if (damage <= 0f || Object == null || !Object.IsValid)
+                return;
+
+            var victimRef = PlayerOwnership.ResolveLogicalOwner(this);
+            if (victimRef == PlayerRef.None)
+                return;
+
+            var gm = GameManager.Instance;
+            if (gm != null && gm.IsNetworkActive)
+                gm.RequestMasterHit(victimRef, damage, attacker, hitOrigin);
+        }
+
+        /// <summary>Victim SA applies master-rolled damage (no local RNG).</summary>
+        public void ApplyMasterHitLocal(float rolledDamage, PlayerRef attacker, Vector3 hitOrigin)
+        {
+            if (!HasStateAuthority || rolledDamage <= 0f || IsDead)
                 return;
 
             SessionRuntime.Refresh(Runner);
@@ -152,7 +183,7 @@ namespace FusionMultiplayer.Player
             if (planar.sqrMagnitude > MaxHitDistance * MaxHitDistance)
                 return;
 
-            ApplyDamageInternal(CombatRules.RollDamage(damage), attacker);
+            ApplyDamageInternal(rolledDamage, attacker);
         }
 
         private void ApplyDamageInternal(float amount, PlayerRef attacker)
@@ -178,7 +209,7 @@ namespace FusionMultiplayer.Player
 
             IsDead = true;
             Health = 0f;
-            _respawnTimer = TickTimer.CreateFromSeconds(Runner, RespawnDelaySeconds);
+            _respawnTimer = TickTimer.CreateFromSeconds(Runner, ActiveRespawnDelaySeconds);
             SetCorpseVisible(false);
 
             var victimRef = PlayerOwnership.ResolveLogicalOwner(this);
@@ -198,7 +229,12 @@ namespace FusionMultiplayer.Player
             if (gm != null && CharacterSlot >= 0 && CharacterSlot < PlayerRegistry.MaxCharacterSlots)
             {
                 var sp = gm.GetSpawnPoint(CharacterSlot);
-                transform.SetPositionAndRotation(sp.position, sp.rotation);
+                if (_networkCharacterController == null)
+                    _networkCharacterController = GetComponent<NetworkCharacterController>();
+                if (_networkCharacterController != null)
+                    _networkCharacterController.Teleport(sp.position, sp.rotation);
+                else
+                    transform.SetPositionAndRotation(sp.position, sp.rotation);
             }
 
             Health = MaxHealth;
@@ -236,7 +272,7 @@ namespace FusionMultiplayer.Player
                 }
             }
 
-            // Proxies: NT alone. Local IA keeps CC for prediction even without SA.
+            // Proxies: NCC interpolates. Local IA/SA keep CC enabled for simulation.
             if (_characterController != null)
                 _characterController.enabled = visible && (HasStateAuthority || HasInputAuthority);
 
@@ -321,9 +357,54 @@ namespace FusionMultiplayer.Player
             _appliedTint = new Color(-1f, -1f, -1f, -1f);
         }
 
+        /// <summary>
+        /// Shared Mode: master (or any peer) asks the SA owner to stop bot AI and despawn this body.
+        /// If SA is in limbo, session authority requests it and despawns on the next tick.
+        /// </summary>
+        public void RequestReleaseBody()
+        {
+            if (Object == null || !Object.IsValid)
+                return;
+
+            if (HasStateAuthority)
+            {
+                ReleaseBodyLocal();
+                return;
+            }
+
+            RPC_ReleaseBody();
+
+            if (Runner != null && NetworkAuthority.IsSessionAuthority(Runner))
+            {
+                _releaseWhenHasAuthority = true;
+                Object.RequestStateAuthority();
+            }
+        }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_ReleaseBody()
+        {
+            ReleaseBodyLocal();
+        }
+
+        private void ReleaseBodyLocal()
+        {
+            if (!HasStateAuthority || Object == null || !Object.IsValid || Runner == null)
+                return;
+
+            _releaseWhenHasAuthority = false;
+
+            var brain = GetComponent<BotBrain>();
+            if (brain != null)
+                brain.Deactivate();
+
+            Runner.Despawn(Object);
+        }
+
         public override void Despawned(NetworkRunner runner, bool hasState)
         {
             PlayerRegistry.UnregisterAvatar(this);
+            _releaseWhenHasAuthority = false;
 
             var gm = GameManager.Instance;
             if (runner == null || gm == null || !runner.IsRunning || runner.IsShutdown)
@@ -338,9 +419,14 @@ namespace FusionMultiplayer.Player
                 return;
             }
 
-            var owner = Object.IsValid ? Object.InputAuthority : runner.LocalPlayer;
+            // Bot seats clear InputAuthority on leave — still free CharacterOwners via slot owner.
+            var owner = Object.IsValid ? Object.InputAuthority : PlayerRef.None;
+            if (owner == PlayerRef.None)
+                owner = gm.GetCharacterOwner(CharacterSlot);
             if (owner != PlayerRef.None)
                 gm.ReleaseCharacterSlot(CharacterSlot, owner);
+            else
+                gm.SetCharacterOwner(CharacterSlot, PlayerRef.None);
 
             base.Despawned(runner, hasState);
         }

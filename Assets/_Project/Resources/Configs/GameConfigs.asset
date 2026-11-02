@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca112eb0c9f5e4abe9d8ffebc639af4e, type: 3}
+  m_Name: GameConfigs
+  m_EditorClassIdentifier: FusionMultiplayer.Runtime::FusionMultiplayer.Data.GameConfigs
+  _match: {fileID: 11400000, guid: 3f83d6e2f583248acb1c8a280181e8dc, type: 2}
+  _combat: {fileID: 11400000, guid: 634040140253647c1844b074f4218f12, type: 2}
+  _reconnect: {fileID: 11400000, guid: c2191bdf5909d4c3aaed97e1cd3e2386, type: 2}
+  _playerStats: {fileID: 11400000, guid: 3b7823384aee34f23a2afee032a4e954, type: 2}
+  _bot: {fileID: 11400000, guid: 8547f4a418e994b6480cc097fb0b1881, type: 2}
+  _difficulty: {fileID: 11400000, guid: 78e6d8816cb01468596ec417345e3364, type: 2}
+  _maps: {fileID: 11400000, guid: 141bb6ed5827444ec9c2d0708e51112b, type: 2}
+  _modes: {fileID: 11400000, guid: 8418909214fd14a2aa936d7c08a0685f, type: 2}
+  _uiTheme: {fileID: 11400000, guid: 2a9ad2c9a7092485c8c604d032f99adc, type: 2}
+  _prefabs: {fileID: 11400000, guid: f10f1746053fc4f76b469aaaa5da3b13, type: 2}

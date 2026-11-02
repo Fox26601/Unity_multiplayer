@@ -113,7 +113,7 @@ namespace FusionMultiplayer.Chat
             return Color.white;
         }
 
-        [Rpc(RpcSources.All, RpcTargets.All, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        [Rpc(RpcSources.All, RpcTargets.All)]
         private void RPC_Broadcast(NetworkString<_64> text, RpcInfo info = default)
         {
             var sender = info.Source;
@@ -123,7 +123,7 @@ namespace FusionMultiplayer.Chat
         }
 
         /// <summary>Non-authority clients ask scene authority to fan out a whisper.</summary>
-        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         private void RPC_RequestWhisper(PlayerRef recipient, NetworkString<_64> text, RpcInfo info = default)
         {
             var sender = info.Source;
